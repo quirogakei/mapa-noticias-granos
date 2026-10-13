@@ -20,7 +20,7 @@ QUERIES = [
     "malting", "grain taxes", "exportaciones soja", "cosecha gruesa", "aranceles granos",
     "cebada", "barley", "beer market", "biocombustibles", "grain prices", "grain",
     "harvest", "cosecha", "siembra", "Agriculture", "Breweries", "Beer Industry",
-    "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "biofuels"
+    "Agriculture sector", "crop", "war", "guerra", "conflicto armado",
 ]
 DIAS = 7                 # noticias de los últimos N días
 MAX_POR_PAIS = 20        # máximo de noticias que se guardan/muestran por país
@@ -269,5 +269,6 @@ PAGINA = """<!DOCTYPE html>
 with open(ARCHIVO_SALIDA, "w", encoding="utf-8") as f:
     f.write(PAGINA.replace("__PLOT__", plot_html))
 print(f"Listo: se generó {ARCHIVO_SALIDA}")
+
 
 
