@@ -20,7 +20,7 @@ QUERIES = [
     "malting", "grain taxes", "exportaciones soja", "cosecha gruesa", "aranceles granos",
     "cebada", "barley", "beer market", "biocombustibles", "grain prices", "grain",
     "harvest", "cosecha", "siembra", "Agriculture", "Breweries", "Beer Industry",
-    "Agriculture sector", "crop", "war", "guerra", "conflicto armado",
+    "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "biofuels"
 ]
 DIAS = 7                 # noticias de los últimos N días
 MAX_POR_PAIS = 20        # máximo de noticias que se guardan/muestran por país
@@ -206,17 +206,13 @@ function mostrar(pais) {
 }
 function actualizarHint() {
   hint.textContent = fijado
-    ? '📌 Fijado. Clic otra vez en el círculo para soltar.'
-    : 'Pasá el mouse por un círculo y hacé clic para fijar las noticias.';
+    ? '📌 Mostrando las noticias de ' + fijado + '. Hacé clic en otro círculo para cambiar.'
+    : 'Hacé clic en un círculo del mapa para ver sus noticias.';
 }
-gd.on('plotly_hover', function (e) {
-  var p = e.points[0];
-  if (p.customdata && !fijado) mostrar(p.customdata);
-});
 gd.on('plotly_click', function (e) {
   var p = e.points[0];
   if (!p.customdata) return;
-  fijado = (fijado === p.customdata) ? null : p.customdata;
+  fijado = p.customdata;
   mostrar(p.customdata);
   actualizarHint();
 });
