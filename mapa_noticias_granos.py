@@ -1,18 +1,18 @@
 # -*- coding: utf-8 -*-
 """
 🌾 Mapa de noticias del mercado de granos
-
+ 
 - Busca noticias en Google News (RSS) y detecta los países mencionados.
 - Muestra MÁXIMO 20 noticias por país (las más recientes).
 - Al pasar el mouse sobre un círculo, se muestran las noticias en un panel lateral
   con links clickeables. Al hacer clic en el círculo, el panel queda "fijado"
   para que puedas moverte y abrir las noticias sin que cambie.
 - Genera un archivo index.html listo para publicar en GitHub Pages.
-
+ 
 En Colab: pegá cada bloque "# %%" en una celda. En la primera celda agregá:
     !pip install -q feedparser plotly
 """
-
+ 
 # %% 1. Configuración
 QUERIES = [
     "mercado de granos", "precio soja", "precio trigo", "precio maíz",
@@ -26,15 +26,15 @@ DIAS = 7                 # noticias de los últimos N días
 MAX_POR_PAIS = 20        # máximo de noticias que se guardan/muestran por país
 ARCHIVO_SALIDA = "index.html"
 IDIOMAS = [("es-419", "AR", "AR:es-419"), ("en-US", "US", "US:en")]  # (hl, gl, ceid)
-
+ 
 # %% 2. Búsqueda de noticias (Google News RSS)
 import re, json, urllib.parse
 import feedparser
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from time import mktime
-
-
+ 
+ 
 def buscar_noticias(queries, dias, idiomas):
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
     filas = []
@@ -53,11 +53,11 @@ def buscar_noticias(queries, dias, idiomas):
         return pd.DataFrame(columns=["titulo", "link", "fecha", "fuente"])
     df = pd.DataFrame(filas).drop_duplicates("titulo").sort_values("fecha", ascending=False)
     return df.reset_index(drop=True)
-
-
+ 
+ 
 noticias = buscar_noticias(QUERIES, DIAS, IDIOMAS)
 print(f"{len(noticias)} noticias encontradas")
-
+ 
 # %% 3. Detección de países
 PAISES = {  # nombre: (lat, lon, [alias])
     "Argentina": (-34.6, -64.0, ["argentina", "argentino", "argentinos", "rosario", "bolsa de cereales", "buenos aires"]),
@@ -99,22 +99,22 @@ PAISES = {  # nombre: (lat, lon, [alias])
     "Japón": (36.2, 138.3, ["japón", "japan", "japanese"]),
     "Corea del Sur": (35.9, 127.8, ["corea del sur", "south korea", "korean"]),
 }
-
+ 
 patrones = {p: re.compile(r"(?<!\w)(" + "|".join(re.escape(a) for a in al) + r")(?!\w)", re.I)
             for p, (_, _, al) in PAISES.items()}
-
-
+ 
+ 
 def detectar_paises(texto):
     return [p for p, rx in patrones.items() if rx.search(texto + " ")]
-
-
+ 
+ 
 if len(noticias):
     noticias["paises"] = noticias["titulo"].apply(detectar_paises)
     con_pais = noticias[noticias["paises"].str.len() > 0]
 else:
     con_pais = noticias.assign(paises=[])
 print(f"{len(con_pais)} de {len(noticias)} noticias mencionan algún país")
-
+ 
 # %% 4. Agrupar por país (máx. MAX_POR_PAIS, las más recientes)
 conteo = {}   # país -> lista de noticias (ya vienen ordenadas de más nueva a más vieja)
 for _, r in con_pais.iterrows():
@@ -127,29 +127,29 @@ for _, r in con_pais.iterrows():
                 "f": r["fuente"],
                 "d": r["fecha"].strftime("%d/%m %H:%M"),
             })
-
+ 
 paises_ord = sorted(conteo, key=lambda p: len(conteo[p]), reverse=True)
 total_mostradas = sum(len(v) for v in conteo.values())
-
+ 
 # %% 5. Mapa
 import plotly.graph_objects as go
-
+ 
 lats = [PAISES[p][0] for p in paises_ord]
 lons = [PAISES[p][1] for p in paises_ord]
 cant = [len(conteo[p]) for p in paises_ord]
 tams = [min(12 + 2 * n, 50) for n in cant]
 hover = [f"<b>{p}</b> · {n} noticias<br><i>Clic para fijar las noticias en el panel</i>"
          for p, n in zip(paises_ord, cant)]
-
+ 
 fig = go.Figure()
-
+ 
 # Efecto "glow"
 for escala, op in [(2.4, 0.10), (1.6, 0.20)]:
     fig.add_trace(go.Scattergeo(
         lat=lats, lon=lons, mode="markers", hoverinfo="skip", showlegend=False,
         marker=dict(size=[t * escala for t in tams], color="#ff2d2d", opacity=op, line=dict(width=0)),
     ))
-
+ 
 # Punto principal (customdata = nombre del país, lo usa el JS para llenar el panel)
 fig.add_trace(go.Scattergeo(
     lat=lats, lon=lons, mode="markers+text", showlegend=False,
@@ -160,7 +160,7 @@ fig.add_trace(go.Scattergeo(
     hoverlabel=dict(bgcolor="#1a1f2b", bordercolor="#ff2d2d", font=dict(color="white", size=12)),
     marker=dict(size=tams, color="#ff3b30", opacity=0.95, line=dict(width=2, color="white")),
 ))
-
+ 
 fig.update_geos(
     projection_type="natural earth",
     showland=True, landcolor="#1f2937",
@@ -180,7 +180,7 @@ fig.update_layout(
     paper_bgcolor="#0b1220", plot_bgcolor="#0b1220",
     margin=dict(l=10, r=10, t=80, b=10),
 )
-
+ 
 # JS que corre después de dibujar el mapa: llena el panel con links clickeables
 POST_SCRIPT = """
 var gd = document.getElementById('{plot_id}');
@@ -190,7 +190,10 @@ var titulo = document.getElementById('titulo-panel');
 var hint = document.getElementById('hint');
 var fijado = null;
 var actual = null;
-
+var TOUCH = window.matchMedia('(hover: none)').matches;   // celular / tablet
+var TIT_LARGO = __TIT_LARGO__;
+var TIT_CORTO = __TIT_CORTO__;
+ 
 function mostrar(pais) {
   if (pais === actual) return;   // no redibujar la lista si ya es la misma (evita perder clics)
   actual = pais;
@@ -209,8 +212,10 @@ function mostrar(pais) {
 }
 function actualizarHint() {
   hint.textContent = fijado
-    ? '📌 Fijado: ' + fijado + '. Clic en el mismo círculo para soltar, o en otro para cambiar.'
-    : 'Pasá el mouse sobre un círculo para ver sus noticias. Clic para fijarlas.';
+    ? (TOUCH ? '📌 Mostrando las noticias de ' + fijado + '. Tocá otro círculo para cambiar.'
+             : '📌 Fijado: ' + fijado + '. Clic en el mismo círculo para soltar, o en otro para cambiar.')
+    : (TOUCH ? 'Tocá un círculo del mapa para ver sus noticias.'
+             : 'Pasá el mouse sobre un círculo para ver sus noticias. Clic para fijarlas.');
 }
 // Al pasar el mouse: muestra las noticias (salvo que haya un país fijado)
 gd.on('plotly_hover', function (e) {
@@ -230,7 +235,7 @@ panel.addEventListener('click', function (ev) {
 gd.on('plotly_click', function (e) {
   var p = e.points[0];
   if (!p.customdata) return;
-  if (fijado === p.customdata) {
+  if (!TOUCH && fijado === p.customdata) {
     fijado = null;
   } else {
     fijado = p.customdata;
@@ -239,19 +244,35 @@ gd.on('plotly_click', function (e) {
   actualizarHint();
 });
 actualizarHint();
-setTimeout(function () { Plotly.Plots.resize(gd); }, 150);
-window.addEventListener('resize', function () { Plotly.Plots.resize(gd); });
+// Ajustes para pantallas chicas (título corto, textos más chicos)
+function ajustar() {
+  var m = window.innerWidth <= 800;
+  Plotly.relayout(gd, m
+    ? {'title.text': TIT_CORTO, 'title.font.size': 15, 'margin.t': 56, 'margin.l': 4, 'margin.r': 4}
+    : {'title.text': TIT_LARGO, 'title.font.size': 20, 'margin.t': 80, 'margin.l': 10, 'margin.r': 10});
+  Plotly.restyle(gd, {'textfont.size': m ? 9 : 11}, [2]);
+  Plotly.Plots.resize(gd);
+}
+ajustar();
+setTimeout(ajustar, 150);
+window.addEventListener('resize', ajustar);
 """
+titulo_largo = fig.layout.title.text
+titulo_corto = (f"<b>🌾 Noticias de granos</b><br>"
+                f"<span style='font-size:11px;color:#9ca3af'>{total_mostradas} noticias · "
+                f"{DIAS} días · act. {datetime.now().strftime('%d/%m %H:%M')}</span>")
 post_script = (POST_SCRIPT
-               .replace("__DATA__", json.dumps(conteo, ensure_ascii=False).replace("</", "<\\/")))
-
+               .replace("__DATA__", json.dumps(conteo, ensure_ascii=False).replace("</", "<\\/"))
+               .replace("__TIT_LARGO__", json.dumps(titulo_largo, ensure_ascii=False))
+               .replace("__TIT_CORTO__", json.dumps(titulo_corto, ensure_ascii=False)))
+ 
 plot_html = fig.to_html(
     full_html=False, include_plotlyjs="cdn", div_id="mapa",
     default_height="100%", default_width="100%",
     config={"responsive": True, "displaylogo": False},
     post_script=post_script,
 )
-
+ 
 PAGINA = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -271,11 +292,17 @@ PAGINA = """<!DOCTYPE html>
   #lista a { color:#ff6b61; text-decoration:none; font-size:14px; line-height:1.35; }
   #lista a:hover { text-decoration:underline; }
   #lista small { display:block; margin-top:3px; color:#9ca3af; font-size:11px; }
+  #app { height:100%; height:100dvh; }
+  #lista { overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
   @media (max-width: 800px) {
-    #panel { flex:1; max-width:none; }
     #app { flex-direction:column; }
-    #mapwrap { height:55%; flex:none; }
-    #panel { width:auto; flex:1; min-height:0; border-left:0; border-top:1px solid #1f2937; }
+    #mapwrap { flex:0 0 48%; height:48%; }
+    #panel { flex:1 1 0; width:auto; max-width:none; min-height:0; border-left:0; border-top:1px solid #1f2937; }
+    #panel h2 { font-size:15px; padding:10px 12px 2px; }
+    #hint { padding:0 12px 6px; font-size:11px; }
+    #lista li { padding:12px 8px; }
+    #lista a { font-size:15px; }
+    .modebar-container { display:none !important; }
   }
 </style>
 </head>
@@ -291,10 +318,11 @@ PAGINA = """<!DOCTYPE html>
 </body>
 </html>
 """
-
+ 
 with open(ARCHIVO_SALIDA, "w", encoding="utf-8") as f:
     f.write(PAGINA.replace("__PLOT__", plot_html))
 print(f"Listo: se generó {ARCHIVO_SALIDA}")
+ 
 
 
 
