@@ -20,7 +20,7 @@ QUERIES = [
     "malting", "grain taxes", "exportaciones soja", "cosecha gruesa", "aranceles granos",
     "cebada", "barley", "beer market", "biocombustibles", "grain prices", "grain",
     "harvest", "cosecha", "siembra", "Agriculture", "Breweries", "Beer Industry",
-    "Agriculture sector", "crop", "war", "guerra", "conflicto armado",
+    "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "Cultivo", "cosecha", "USDA", "Conab", "Trump", "Putin", "Zelensky"
 ]
 DIAS = 7                 # noticias de los últimos N días
 MAX_POR_PAIS = 20        # máximo de noticias que se guardan/muestran por país
@@ -138,7 +138,7 @@ lats = [PAISES[p][0] for p in paises_ord]
 lons = [PAISES[p][1] for p in paises_ord]
 cant = [len(conteo[p]) for p in paises_ord]
 tams = [min(12 + 2 * n, 50) for n in cant]
-hover = [f"<b>{p}</b> · {n} noticias<br><i>Clic para fijar y abrir las noticias</i>"
+hover = [f"<b>{p}</b> · {n} noticias<br><i>Clic para fijar las noticias en el panel</i>"
          for p, n in zip(paises_ord, cant)]
 
 fig = go.Figure()
@@ -206,14 +206,25 @@ function mostrar(pais) {
 }
 function actualizarHint() {
   hint.textContent = fijado
-    ? '📌 Mostrando las noticias de ' + fijado + '. Hacé clic en otro círculo para cambiar.'
-    : 'Hacé clic en un círculo del mapa para ver sus noticias.';
+    ? '📌 Fijado: ' + fijado + '. Clic en el mismo círculo para soltar, o en otro para cambiar.'
+    : 'Pasá el mouse sobre un círculo para ver sus noticias. Clic para fijarlas.';
 }
+// Al pasar el mouse: muestra las noticias (salvo que haya un país fijado)
+gd.on('plotly_hover', function (e) {
+  var p = e.points[0];
+  if (!p.customdata || fijado) return;
+  mostrar(p.customdata);
+});
+// Clic: fija el país (otro clic en el mismo lo suelta)
 gd.on('plotly_click', function (e) {
   var p = e.points[0];
   if (!p.customdata) return;
-  fijado = p.customdata;
-  mostrar(p.customdata);
+  if (fijado === p.customdata) {
+    fijado = null;
+  } else {
+    fijado = p.customdata;
+    mostrar(p.customdata);
+  }
   actualizarHint();
 });
 actualizarHint();
@@ -269,6 +280,7 @@ PAGINA = """<!DOCTYPE html>
 with open(ARCHIVO_SALIDA, "w", encoding="utf-8") as f:
     f.write(PAGINA.replace("__PLOT__", plot_html))
 print(f"Listo: se generó {ARCHIVO_SALIDA}")
+
 
 
 
