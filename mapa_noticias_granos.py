@@ -274,9 +274,4 @@ with open(ARCHIVO_SALIDA, "w", encoding="utf-8") as f:
     f.write(PAGINA.replace("__PLOT__", plot_html))
 print(f"Listo: se generó {ARCHIVO_SALIDA}")
 
-# En Colab: descarga automática del archivo (si no estás en Colab, no hace nada)
-try:
-    from google.colab import files
-    files.download(ARCHIVO_SALIDA)
-except ImportError:
-    pass
+
