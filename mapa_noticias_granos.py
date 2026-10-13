@@ -299,63 +299,6 @@ print(f"Listo: se generó {ARCHIVO_SALIDA}")
 
 
 
-actualizarHint();
-"""
-post_script = (POST_SCRIPT
-               .replace("__DATA__", json.dumps(conteo, ensure_ascii=False).replace("</", "<\\/")))
-
-plot_html = fig.to_html(
-    full_html=False, include_plotlyjs="cdn", div_id="mapa",
-    default_height="100%", default_width="100%",
-    config={"responsive": True, "displaylogo": False},
-    post_script=post_script,
-)
-
-PAGINA = """<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mapa de noticias del mercado de granos</title>
-<style>
-  html, body { margin:0; height:100%; background:#0b1220; font-family: Arial, sans-serif; color:#e5e7eb; }
-  #app { display:flex; height:100%; }
-  #mapwrap { flex:1; min-width:0; height:100%; }
-  #panel { width:380px; background:#111827; border-left:1px solid #1f2937; display:flex; flex-direction:column; }
-  #panel h2 { margin:0; padding:16px 16px 4px; font-size:17px; color:#fff; }
-  #hint { padding:0 16px 10px; font-size:12px; color:#9ca3af; }
-  #lista { list-style:none; margin:0; padding:0 8px 16px; overflow-y:auto; flex:1; }
-  #lista li { padding:10px 8px; border-bottom:1px solid #1f2937; }
-  #lista a { color:#ff6b61; text-decoration:none; font-size:14px; line-height:1.35; }
-  #lista a:hover { text-decoration:underline; }
-  #lista small { display:block; margin-top:3px; color:#9ca3af; font-size:11px; }
-  @media (max-width: 800px) {
-    #app { flex-direction:column; }
-    #mapwrap { height:55%; flex:none; }
-    #panel { width:auto; flex:1; min-height:0; border-left:0; border-top:1px solid #1f2937; }
-  }
-</style>
-</head>
-<body>
-<div id="app">
-  <div id="mapwrap">__PLOT__</div>
-  <aside id="panel">
-    <h2 id="titulo-panel">Noticias</h2>
-    <div id="hint"></div>
-    <ul id="lista"><li>Pasá el mouse sobre un círculo del mapa.</li></ul>
-  </aside>
-</div>
-</body>
-</html>
-"""
-
-with open(ARCHIVO_SALIDA, "w", encoding="utf-8") as f:
-    f.write(PAGINA.replace("__PLOT__", plot_html))
-print(f"Listo: se generó {ARCHIVO_SALIDA}")
-
-
-
-
 
 
 
