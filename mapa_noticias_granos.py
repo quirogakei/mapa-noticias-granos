@@ -189,8 +189,11 @@ var panel = document.getElementById('lista');
 var titulo = document.getElementById('titulo-panel');
 var hint = document.getElementById('hint');
 var fijado = null;
+var actual = null;
 
 function mostrar(pais) {
+  if (pais === actual) return;   // no redibujar la lista si ya es la misma (evita perder clics)
+  actual = pais;
   var items = DATA[pais] || [];
   titulo.textContent = pais + ' · ' + items.length + ' noticias';
   panel.innerHTML = '';
@@ -216,6 +219,14 @@ gd.on('plotly_hover', function (e) {
   mostrar(p.customdata);
 });
 // Clic: fija el país (otro clic en el mismo lo suelta)
+// Abrir noticias: pestaña nueva; si el navegador la bloquea, abre en la misma pestaña
+panel.addEventListener('click', function (ev) {
+  var a = ev.target.closest('a');
+  if (!a) return;
+  ev.preventDefault();
+  var w = window.open(a.href, '_blank');
+  if (w) { w.opener = null; } else { window.location.href = a.href; }
+});
 gd.on('plotly_click', function (e) {
   var p = e.points[0];
   if (!p.customdata) return;
@@ -280,6 +291,9 @@ PAGINA = """<!DOCTYPE html>
 with open(ARCHIVO_SALIDA, "w", encoding="utf-8") as f:
     f.write(PAGINA.replace("__PLOT__", plot_html))
 print(f"Listo: se generó {ARCHIVO_SALIDA}")
+
+
+
 
 
 
