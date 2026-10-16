@@ -20,8 +20,7 @@ QUERIES = [
     "malting", "grain taxes", "exportaciones soja", "cosecha gruesa", "aranceles granos",
     "cebada", "barley", "beer market", "biocombustibles", "grain prices", "grain",
     "harvest", "cosecha", "siembra", "Agriculture", "Breweries", "Beer Industry",
-    "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "Sunflower seed", "Sunflower oil", "Sunflower pellets", "Sunflower prices, 
-    "milling", "soybean meal", "aceite de palma", "palma", "palm oil", "tariffs"
+    "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "Sunflower seed", "Sunflower oil", "Sunflower pellets", "Sunflower prices, "milling", "soybean meal", "aceite de palma", "palma", "palm oil", "tariffs"
 ]
 DIAS = 7                 # noticias de los últimos N días
 MAX_POR_PAIS = 20        # máximo de noticias que se guardan/muestran por país
