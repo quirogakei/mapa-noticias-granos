@@ -34,13 +34,13 @@ IDIOMAS = [("es-419", "AR", "AR:es-419"), ("en-US", "US", "US:en")]  # (hl, gl, 
 
 # 🆕 Identidad visual según el Manual Normativo de la BCP (guía cromática, p. 9)
 COL = dict(
-    fondo="#ffffff",      # el manual recomienda la marca full color sobre fondo blanco
+    fondo="#e8f2df",      # verde muy claro (fondo y mar)
     panel="#ffffff",
     borde="#dfe8cc",      # divisores (tinte claro del verde)
-    tierra="#e9f1d8",     # continentes (tinte claro del verde)
-    paises="#ffffff",     # límites entre países
-    costa="#94C24A",      # costas
-    marcador="#1E612C",   # verde oscuro: círculos normales
+    tierra="#d3e6c4",     # continentes
+    paises="#d3e6c4",     # (límites entre países: no se dibujan)
+    costa="#bcd7aa",      # costas
+    marcador="#2a8a43",   # verde: círculos normales
     alerta="#D62828",     # rojo: SOLO para alertas (círculos, avisos y etiquetas)
     verde="#94C24A",
     turquesa="#1CAB9E",
@@ -53,9 +53,9 @@ COL = dict(
 # Si el navegador no la tiene instalada, usa Libre Franklin (Google Fonts), que es muy parecida.
 FUENTE = "Franklin Gothic Medium, Libre Franklin, Arial Narrow, Arial, sans-serif"
 FUENTE_T = "Franklin Gothic Heavy, Libre Franklin, Arial Black, sans-serif"
-LOGO = "logo.png"        # logo full color (subilo al repo junto al script). "" = sin logo
-FONDO_IMAGEN = "fondo.png"        # opcional: imagen de fondo. OJO: el manual no recomienda la marca color sobre fotos con textura
-VELO_FONDO = "rgba(255,255,255,0.88)"   # capa clara sobre la imagen de fondo
+LOGO = "logo.png"        # logo BCP verde de una tinta (subilo al repo junto al script). "" = sin logo
+FONDO_IMAGEN = ""        # opcional: imagen de fondo. OJO: el manual no recomienda la marca color sobre fotos con textura
+VELO_FONDO = "rgba(232,242,223,0.88)"   # capa clara sobre la imagen de fondo
 
 # %% 2. Búsqueda de noticias (Google News RSS)
 import re, json, urllib.parse, os, base64, mimetypes
@@ -65,6 +65,7 @@ from datetime import datetime, timedelta, timezone
 from time import mktime
 from concurrent.futures import ThreadPoolExecutor
 from deep_translator import GoogleTranslator   # 🆕
+ART = timezone(timedelta(hours=-3))             # 🆕 hora de Argentina (sin horario de verano)
 
 
 def buscar_noticias(queries, dias, idiomas):
@@ -186,7 +187,7 @@ for _, r in con_pais.iterrows():
                 "o": r["titulo"],            # 🆕 título original
                 "l": r["link"],
                 "f": r["fuente"],
-                "d": r["fecha"].strftime("%d/%m %H:%M"),
+                "d": r["fecha"].astimezone(ART).strftime("%d/%m %H:%M"),
                 "a": clasificar(r["titulo"]),  # 🆕 alertas
             })
 
@@ -196,26 +197,65 @@ for _, r in noticias.iterrows():
     a = clasificar(r["titulo"])
     if a:
         alertas_lista.append({"t": r["titulo"], "o": r["titulo"], "l": r["link"], "f": r["fuente"],
-                              "d": r["fecha"].strftime("%d/%m %H:%M"), "a": a})
+                              "d": r["fecha"].astimezone(ART).strftime("%d/%m %H:%M"), "a": a})
     if len(alertas_lista) >= MAX_ALERTAS:
         break
 
 
-def traducir(texto):
-    for _ in range(2):   # un reintento por si Google limita la consulta
+import time
+errores_trad = []
+
+
+def _traducir_uno(t):
+    return GoogleTranslator(source="auto", target="es").translate(t) or t
+
+
+def traducir_lote(textos):
+    """Traduce varios títulos en UNA sola consulta (uno por línea). Así se hacen ~20 consultas
+    en vez de cientos, y Google no bloquea a GitHub por exceso de pedidos."""
+    for intento in range(3):
         try:
-            return GoogleTranslator(source="auto", target="es").translate(texto) or texto
-        except Exception:
-            pass
-    return texto         # si falla, queda el título original
+            res = GoogleTranslator(source="auto", target="es").translate("\n".join(textos))
+            partes = (res or "").split("\n")
+            if len(partes) == len(textos):
+                return partes
+            break                      # Google unió/partió líneas: se resuelve uno por uno
+        except Exception as e:
+            errores_trad.append(repr(e)[:200])
+            time.sleep(2 * (intento + 1))
+    out = []                           # plan B: de a uno (se omite si ya hay muchos errores)
+    for t in textos:
+        if len(errores_trad) > 5:
+            out.append(t); continue
+        try:
+            out.append(_traducir_uno(t))
+        except Exception as e:
+            errores_trad.append(repr(e)[:200]); out.append(t)
+    return out
 
 
 originales = list({n["o"] for v in conteo.values() for n in v} | {n["o"] for n in alertas_lista})
-with ThreadPoolExecutor(8) as ex:
-    traducciones = dict(zip(originales, ex.map(traducir, originales)))
+lotes, actual_l, largo = [], [], 0
+for t in originales:
+    t1 = t.replace("\n", " ")
+    if actual_l and (largo + len(t1) > 3800 or len(actual_l) >= 40):
+        lotes.append(actual_l); actual_l, largo = [], 0
+    actual_l.append(t1); largo += len(t1) + 1
+if actual_l:
+    lotes.append(actual_l)
+traducciones = {}
+for lote in lotes:
+    for t_orig, t_es in zip(lote, traducir_lote(lote)):
+        traducciones[t_orig] = t_es
+    time.sleep(0.5)
+for t in originales:
+    traducciones.setdefault(t, t)
 for n in [x for v in conteo.values() for x in v] + alertas_lista:
     n["t"] = traducciones[n["o"]]
-print(f"{len(originales)} títulos traducidos · {len(alertas_lista)} alertas")
+_cambiados = sum(1 for t in originales if traducciones[t].strip() != t.strip())
+print(f"{len(originales)} títulos · {_cambiados} traducidos · {len(alertas_lista)} alertas")
+if errores_trad:
+    print(f"⚠️ {len(errores_trad)} errores de traducción. Primero: {errores_trad[0]}")
 
 paises_ord = sorted(conteo, key=lambda p: len(conteo[p]), reverse=True)
 total_mostradas = sum(len(v) for v in conteo.values())
@@ -230,7 +270,8 @@ n_alert = [sum(1 for x in conteo[p] if x["a"]) for p in paises_ord]          # �
 colores = [COL["alerta"] if k else COL["marcador"] for k in n_alert]          # 🆕
 bordes = ["#ffffff"] * len(n_alert)                                           # 🆕
 tams = [min(12 + 2 * n, 50) for n in cant]
-hover = [f"<b>{p}</b> · {n} noticias" + (f" · 🚨 {k} alertas" if k else "")
+hover = [f"<b>{p}</b> · {n} noticias"
+         + (f" · <span style='color:{COL['alerta']}'>▲ {k} alerta{'s' if k > 1 else ''}</span>" if k else "")
          + "<br><i>Clic para fijar las noticias en el panel</i>"
          for p, n, k in zip(paises_ord, cant, n_alert)]
 
@@ -247,10 +288,10 @@ for escala, op in [(2.4, 0.10), (1.6, 0.20)]:
 fig.add_trace(go.Scattergeo(
     lat=lats, lon=lons, mode="markers+text", showlegend=False,
     customdata=paises_ord,
-    text=[p if n >= 2 else "" for p, n in zip(paises_ord, cant)],
-    textposition="top center", textfont=dict(color=COL["texto"], size=11, family=FUENTE),
+    text=paises_ord,
+    textposition="top center", textfont=dict(color=COL["titulo"], size=11, family=FUENTE),
     hovertext=hover, hoverinfo="text",
-    hoverlabel=dict(bgcolor="#ffffff", bordercolor=COL["turquesa"], font=dict(color=COL["texto"], size=12, family=FUENTE)),
+    hoverlabel=dict(bgcolor="#ffffff", bordercolor=COL["marcador"], font=dict(color=COL["texto"], size=12, family=FUENTE)),
     marker=dict(size=tams, color=colores, opacity=0.95, line=dict(width=2, color=bordes)),
 ))
 
@@ -259,20 +300,13 @@ fig.update_geos(
     projection_type="natural earth",
     showland=True, landcolor=COL["tierra"],
     showocean=False,
-    showcountries=True, countrycolor=COL["paises"], countrywidth=0.6,
+    showcountries=False,
     showcoastlines=True, coastlinecolor=COL["costa"], coastlinewidth=0.6,
     showframe=False, bgcolor="rgba(0,0,0,0)", lataxis_range=[-58, 80],
 )
 fig.update_layout(
-    title=dict(
-        text=f"<b>🌾 Mercado de granos: dónde está la noticia</b><br>"
-             f"<span style='font-size:13px;color:{COL['suave']}'>{total_mostradas} noticias · "
-             f"últimos {DIAS} días · máx. {MAX_POR_PAIS} por país · "
-             f"actualizado {datetime.now().strftime('%d/%m/%Y %H:%M')}</span>",
-        x=0.02, font=dict(color=COL["titulo"], size=20, family=FUENTE_T),
-    ),
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(family=FUENTE),
-    margin=dict(l=10, r=10, t=80, b=10),
+    margin=dict(l=10, r=10, t=10, b=10),
 )
 
 # JS que corre después de dibujar el mapa: llena el panel con links clickeables
@@ -287,8 +321,6 @@ var hint = document.getElementById('hint');
 var fijado = null;
 var actual = null;
 var TOUCH = window.matchMedia('(hover: none)').matches;   // celular / tablet
-var TIT_LARGO = __TIT_LARGO__;
-var TIT_CORTO = __TIT_CORTO__;
 
 // Crea un <li> con el título (traducido), la fuente/fecha y los avisos de alerta
 function crearItem(n) {
@@ -360,12 +392,10 @@ gd.on('plotly_click', function (e) {
   actualizarHint();
 });
 actualizarHint();
-// Ajustes para pantallas chicas (título corto, textos más chicos)
+// Ajustes para pantallas chicas (textos más chicos)
 function ajustar() {
   var m = window.innerWidth <= 800;
-  Plotly.relayout(gd, m
-    ? {'title.text': TIT_CORTO, 'title.font.size': 15, 'margin.t': 56, 'margin.l': 4, 'margin.r': 4}
-    : {'title.text': TIT_LARGO, 'title.font.size': 20, 'margin.t': 80, 'margin.l': 10, 'margin.r': 10});
+  Plotly.relayout(gd, {'margin.l': m ? 4 : 10, 'margin.r': m ? 4 : 10});
   Plotly.restyle(gd, {'textfont.size': m ? 9 : 11}, [2]);
   Plotly.Plots.resize(gd);
 }
@@ -373,16 +403,10 @@ ajustar();
 setTimeout(ajustar, 150);
 window.addEventListener('resize', ajustar);
 """
-titulo_largo = fig.layout.title.text
-titulo_corto = (f"<b>🌾 Noticias de granos</b><br>"
-                f"<span style='font-size:11px;color:{COL['suave']}'>{total_mostradas} noticias · "
-                f"{DIAS} días · act. {datetime.now().strftime('%d/%m %H:%M')}</span>")
 _js = lambda obj: json.dumps(obj, ensure_ascii=False).replace("</", "<\\/")
 post_script = (POST_SCRIPT
                .replace("__DATA__", _js(conteo))
-               .replace("__ALERTAS__", _js(alertas_lista))
-               .replace("__TIT_LARGO__", json.dumps(titulo_largo, ensure_ascii=False))
-               .replace("__TIT_CORTO__", json.dumps(titulo_corto, ensure_ascii=False)))
+               .replace("__ALERTAS__", _js(alertas_lista)))
 
 plot_html = fig.to_html(
     full_html=False, include_plotlyjs="cdn", div_id="mapa",
@@ -411,7 +435,11 @@ css_root = ":root{" + ";".join(f"--{k}:{v}" for k, v in COL.items()) + f";--fuen
 css_fondo = (f"background-image:linear-gradient({VELO_FONDO},{VELO_FONDO}),url('{fondo_src}');"
              "background-size:cover;background-position:center;background-repeat:no-repeat;"
              if fondo_src else "")
-logo_html = f'<img id="logo-bg" src="{logo_src}" alt="Bolsa de Cereales y Productos Bahía Blanca">' if logo_src else ""
+ahora = datetime.now(ART).strftime("%d/%m/%Y %H:%M")
+cab_html = ('<div id="cab">'
+            + (f'<img src="{logo_src}" alt="BCP · Bolsa de Cereales y Productos de Bahía Blanca"><div class="sep"></div>' if logo_src else "")
+            + '<div><h1><b>Mercado de granos:</b>dónde está la noticia</h1>'
+            + f'<p>{total_mostradas} noticias &nbsp;·&nbsp; últimos {DIAS} días &nbsp;·&nbsp; actualizado {ahora}</p></div></div>')
 
 PAGINA = """<!DOCTYPE html>
 <html lang="es">
@@ -426,9 +454,15 @@ PAGINA = """<!DOCTYPE html>
   html, body { margin:0; height:100%; overflow:hidden; background:var(--fondo); font-family:var(--fuente); color:var(--texto); }
   body { __FONDO__ }
   #app { display:flex; height:100%; width:100%; }
-  #mapwrap { position:relative; flex:1 1 0; min-width:0; height:100%; overflow:hidden; }
-  #mapwrap .plotly-graph-div { position:relative; z-index:1; width:100% !important; height:100% !important; }
-  #logo-bg { position:absolute; left:16px; bottom:16px; width:min(26%,280px); height:auto; z-index:0; pointer-events:none; }
+  #mapwrap { display:flex; flex-direction:column; flex:1 1 0; min-width:0; height:100%; overflow:hidden; }
+  #mapcont { position:relative; flex:1 1 0; min-height:0; }
+  #mapcont .plotly-graph-div { width:100% !important; height:100% !important; }
+  #cab { display:flex; align-items:center; gap:18px; padding:16px 24px 4px; }
+  #cab img { height:64px; width:auto; display:block; }
+  #cab .sep { width:2px; align-self:stretch; background:var(--titulo); opacity:.8; }
+  #cab h1 { margin:0; font-size:30px; line-height:1.12; font-weight:500; color:var(--titulo); }
+  #cab h1 b { display:block; font-family:var(--fuente-t); font-weight:900; }
+  #cab p { margin:8px 0 0; font-size:13px; color:var(--suave); }
   #panel { flex:0 0 380px; width:380px; max-width:45vw; min-width:0; background:var(--panel); border-left:4px solid var(--verde); display:flex; flex-direction:column; }
   #panel h2 { margin:0; padding:16px 16px 4px; font-family:var(--fuente-t); font-weight:900; font-size:17px; color:var(--titulo); }
   #hint { padding:0 16px 10px; font-size:12px; color:var(--suave); }
@@ -447,8 +481,11 @@ PAGINA = """<!DOCTYPE html>
   #lista { overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
   @media (max-width: 800px) {
     #app { flex-direction:column; }
-    #mapwrap { flex:0 0 48%; height:48%; }
-    #logo-bg { left:8px; bottom:6px; width:34%; }
+    #mapwrap { flex:0 0 50%; height:50%; }
+    #cab { gap:10px; padding:8px 12px 0; }
+    #cab img { height:34px; }
+    #cab h1 { font-size:16px; }
+    #cab p { font-size:10px; margin-top:3px; }
     #panel { flex:1 1 0; width:auto; max-width:none; min-height:0; border-left:0; border-top:4px solid var(--verde); }
     #panel h2 { font-size:15px; padding:10px 12px 2px; }
     #hint { padding:0 12px 6px; font-size:11px; }
@@ -461,8 +498,7 @@ PAGINA = """<!DOCTYPE html>
 </head>
 <body>
 <div id="app">
-  <div id="mapwrap">__LOGO__
-__PLOT__</div>
+  <div id="mapwrap">__CAB__<div id="mapcont">__PLOT__</div></div>
   <aside id="panel">
     <details id="alertas" open>
       <summary>🚨 Alertas (<span id="cuenta-alertas">0</span>)</summary>
@@ -479,11 +515,12 @@ __PLOT__</div>
 
 html_final = (PAGINA.replace("__ROOT__", css_root)
                     .replace("__FONDO__", css_fondo)
-                    .replace("__LOGO__", logo_html)
+                    .replace("__CAB__", cab_html)
                     .replace("__PLOT__", plot_html))
 with open(ARCHIVO_SALIDA, "w", encoding="utf-8") as f:
     f.write(html_final)
 print(f"Listo: se generó {ARCHIVO_SALIDA}")
+
 
 
 
