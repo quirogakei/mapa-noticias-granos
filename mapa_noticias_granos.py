@@ -32,24 +32,30 @@ MAX_ALERTAS = 12         # 🆕 máximo de alertas en el panel superior
 ARCHIVO_SALIDA = "index.html"
 IDIOMAS = [("es-419", "AR", "AR:es-419"), ("en-US", "US", "US:en")]  # (hl, gl, ceid)
 
-# 🆕 Identidad visual. Reemplazá los hex por los colores reales del logo de la Bolsa
-# (con un cuentagotas sobre el logo). Estos son valores de ejemplo.
+# 🆕 Identidad visual según el Manual Normativo de la BCP (guía cromática, p. 9)
 COL = dict(
-    fondo="#0a2540",      # fondo general / mar
-    panel="#0f355c",      # panel lateral
-    borde="#1d4d7e",      # bordes y divisores
-    tierra="rgba(26,74,122,0.85)",   # continentes (semitransparente para que se vea la imagen de fondo)
-    paises="#3b6ea5",     # límites entre países
-    costa="#5a8fc4",      # costas
-    marcador="#d4a017",   # círculos (dorado trigo)
-    alerta="#e63946",     # círculos y avisos con alerta
-    texto="#f1f5f9",
-    suave="#a9bdd3",      # textos secundarios
-    link="#f2c94c",       # links de noticias
+    fondo="#ffffff",      # el manual recomienda la marca full color sobre fondo blanco
+    panel="#ffffff",
+    borde="#dfe8cc",      # divisores (tinte claro del verde)
+    tierra="#e9f1d8",     # continentes (tinte claro del verde)
+    paises="#ffffff",     # límites entre países
+    costa="#94C24A",      # costas
+    marcador="#1E612C",   # verde oscuro: círculos normales
+    alerta="#D62828",     # rojo: SOLO para alertas (círculos, avisos y etiquetas)
+    verde="#94C24A",
+    turquesa="#1CAB9E",
+    titulo="#1E612C",
+    texto="#646363",      # gris institucional
+    suave="#8a8a8a",
+    link="#1E612C",
 )
-LOGO = "logo.png"        # 🆕 archivo local (junto al script) o URL. "" = sin logo
-FONDO_IMAGEN = ""        # 🆕 archivo local o URL de la imagen de fondo. "" = sin imagen
-VELO_FONDO = "rgba(10,37,64,0.78)"   # 🆕 capa translúcida sobre la imagen para que se lea el mapa
+# Tipografía del manual: Franklin Gothic (Heavy para títulos, Medium para texto).
+# Si el navegador no la tiene instalada, usa Libre Franklin (Google Fonts), que es muy parecida.
+FUENTE = "Franklin Gothic Medium, Libre Franklin, Arial Narrow, Arial, sans-serif"
+FUENTE_T = "Franklin Gothic Heavy, Libre Franklin, Arial Black, sans-serif"
+LOGO = "logo.png"        # logo full color (subilo al repo junto al script). "" = sin logo
+FONDO_IMAGEN = "fondo.png"        # opcional: imagen de fondo. OJO: el manual no recomienda la marca color sobre fotos con textura
+VELO_FONDO = "rgba(255,255,255,0.88)"   # capa clara sobre la imagen de fondo
 
 # %% 2. Búsqueda de noticias (Google News RSS)
 import re, json, urllib.parse, os, base64, mimetypes
@@ -222,6 +228,7 @@ lons = [PAISES[p][1] for p in paises_ord]
 cant = [len(conteo[p]) for p in paises_ord]
 n_alert = [sum(1 for x in conteo[p] if x["a"]) for p in paises_ord]          # 🆕
 colores = [COL["alerta"] if k else COL["marcador"] for k in n_alert]          # 🆕
+bordes = ["#ffffff"] * len(n_alert)                                           # 🆕
 tams = [min(12 + 2 * n, 50) for n in cant]
 hover = [f"<b>{p}</b> · {n} noticias" + (f" · 🚨 {k} alertas" if k else "")
          + "<br><i>Clic para fijar las noticias en el panel</i>"
@@ -241,10 +248,10 @@ fig.add_trace(go.Scattergeo(
     lat=lats, lon=lons, mode="markers+text", showlegend=False,
     customdata=paises_ord,
     text=[p if n >= 2 else "" for p, n in zip(paises_ord, cant)],
-    textposition="top center", textfont=dict(color=COL["texto"], size=11, family="Arial"),
+    textposition="top center", textfont=dict(color=COL["texto"], size=11, family=FUENTE),
     hovertext=hover, hoverinfo="text",
-    hoverlabel=dict(bgcolor=COL["panel"], bordercolor=COL["marcador"], font=dict(color=COL["texto"], size=12)),
-    marker=dict(size=tams, color=colores, opacity=0.95, line=dict(width=2, color="white")),
+    hoverlabel=dict(bgcolor="#ffffff", bordercolor=COL["turquesa"], font=dict(color=COL["texto"], size=12, family=FUENTE)),
+    marker=dict(size=tams, color=colores, opacity=0.95, line=dict(width=2, color=bordes)),
 ))
 
 # 🆕 Fondo transparente: el color/imagen de fondo lo pone el HTML (así se ve la imagen)
@@ -262,9 +269,9 @@ fig.update_layout(
              f"<span style='font-size:13px;color:{COL['suave']}'>{total_mostradas} noticias · "
              f"últimos {DIAS} días · máx. {MAX_POR_PAIS} por país · "
              f"actualizado {datetime.now().strftime('%d/%m/%Y %H:%M')}</span>",
-        x=0.02, font=dict(color=COL["texto"], size=20),
+        x=0.02, font=dict(color=COL["titulo"], size=20, family=FUENTE_T),
     ),
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(family=FUENTE),
     margin=dict(l=10, r=10, t=80, b=10),
 )
 
@@ -400,11 +407,11 @@ def src_imagen(ruta):
 
 
 logo_src, fondo_src = src_imagen(LOGO), src_imagen(FONDO_IMAGEN)
-css_root = ":root{" + ";".join(f"--{k}:{v}" for k, v in COL.items()) + "}"
+css_root = ":root{" + ";".join(f"--{k}:{v}" for k, v in COL.items()) + f";--fuente:{FUENTE};--fuente-t:{FUENTE_T}" + "}"
 css_fondo = (f"background-image:linear-gradient({VELO_FONDO},{VELO_FONDO}),url('{fondo_src}');"
              "background-size:cover;background-position:center;background-repeat:no-repeat;"
              if fondo_src else "")
-logo_html = f'<div id="cab"><img src="{logo_src}" alt="Bolsa de Cereales de Bahía Blanca"></div>' if logo_src else ""
+logo_html = f'<img id="logo-bg" src="{logo_src}" alt="Bolsa de Cereales y Productos Bahía Blanca">' if logo_src else ""
 
 PAGINA = """<!DOCTYPE html>
 <html lang="es">
@@ -412,36 +419,37 @@ PAGINA = """<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mapa de noticias del mercado de granos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;900&display=swap" rel="stylesheet">
 <style>
   __ROOT__
-  html, body { margin:0; height:100%; overflow:hidden; background:var(--fondo); font-family: Arial, sans-serif; color:var(--texto); }
+  html, body { margin:0; height:100%; overflow:hidden; background:var(--fondo); font-family:var(--fuente); color:var(--texto); }
   body { __FONDO__ }
   #app { display:flex; height:100%; width:100%; }
-  #mapwrap { flex:1 1 0; min-width:0; height:100%; overflow:hidden; }
-  #mapwrap .plotly-graph-div { width:100% !important; height:100% !important; }
-  #panel { flex:0 0 380px; width:380px; max-width:45vw; min-width:0; background:var(--panel); border-left:1px solid var(--borde); display:flex; flex-direction:column; }
-  #cab { padding:12px 16px 0; }
-  #cab img { max-height:52px; max-width:100%; display:block; }
-  #panel h2 { margin:0; padding:16px 16px 4px; font-size:17px; color:#fff; }
+  #mapwrap { position:relative; flex:1 1 0; min-width:0; height:100%; overflow:hidden; }
+  #mapwrap .plotly-graph-div { position:relative; z-index:1; width:100% !important; height:100% !important; }
+  #logo-bg { position:absolute; left:16px; bottom:16px; width:min(26%,280px); height:auto; z-index:0; pointer-events:none; }
+  #panel { flex:0 0 380px; width:380px; max-width:45vw; min-width:0; background:var(--panel); border-left:4px solid var(--verde); display:flex; flex-direction:column; }
+  #panel h2 { margin:0; padding:16px 16px 4px; font-family:var(--fuente-t); font-weight:900; font-size:17px; color:var(--titulo); }
   #hint { padding:0 16px 10px; font-size:12px; color:var(--suave); }
-  #alertas { margin:10px 8px 0; border:1px solid var(--alerta); border-radius:6px; background:rgba(230,57,70,.10); }
-  #alertas summary { cursor:pointer; padding:8px 10px; font-weight:bold; font-size:14px; color:var(--alerta); }
+  #alertas { margin:12px 8px 0; border:1px solid var(--alerta); border-left:5px solid var(--alerta); border-radius:6px; background:rgba(214,40,40,.07); }
+  #alertas summary { cursor:pointer; padding:8px 10px; font-family:var(--fuente-t); font-weight:900; font-size:14px; color:var(--titulo); }
   #lista-alertas { list-style:none; margin:0; padding:0 6px 6px; max-height:210px; overflow-y:auto; overscroll-behavior:contain; }
   #lista { list-style:none; margin:0; padding:0 8px 16px; overflow-y:auto; flex:1; }
   #lista li, #lista-alertas li { padding:10px 8px; border-bottom:1px solid var(--borde); }
   #lista li.alerta { border-left:3px solid var(--alerta); }
-  #lista a, #lista-alertas a { color:var(--link); text-decoration:none; font-size:14px; line-height:1.35; }
+  #lista a, #lista-alertas a { color:var(--link); text-decoration:none; font-size:14px; line-height:1.35; font-weight:500; }
   #lista a:hover, #lista-alertas a:hover { text-decoration:underline; }
   #lista small, #lista-alertas small { display:block; margin-top:3px; color:var(--suave); font-size:11px; }
-  .badge { display:inline-block; margin:4px 4px 0 0; padding:1px 7px; border-radius:10px; font-size:11px; background:var(--marcador); color:#1a1a1a; font-weight:bold; }
-  .badge.bel { background:var(--alerta); color:#fff; }
+  .badge { display:inline-block; margin:4px 4px 0 0; padding:1px 7px; border-radius:10px; font-size:11px; background:var(--alerta); color:#fff; font-weight:bold; }
+  .badge.bel { background:#9d1c1c; color:#fff; }
   #app { height:100%; height:100dvh; }
   #lista { overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
   @media (max-width: 800px) {
     #app { flex-direction:column; }
     #mapwrap { flex:0 0 48%; height:48%; }
-    #panel { flex:1 1 0; width:auto; max-width:none; min-height:0; border-left:0; border-top:1px solid var(--borde); }
-    #cab { padding:6px 12px 0; } #cab img { max-height:32px; }
+    #logo-bg { left:8px; bottom:6px; width:34%; }
+    #panel { flex:1 1 0; width:auto; max-width:none; min-height:0; border-left:0; border-top:4px solid var(--verde); }
     #panel h2 { font-size:15px; padding:10px 12px 2px; }
     #hint { padding:0 12px 6px; font-size:11px; }
     #lista-alertas { max-height:110px; }
@@ -453,9 +461,9 @@ PAGINA = """<!DOCTYPE html>
 </head>
 <body>
 <div id="app">
-  <div id="mapwrap">__PLOT__</div>
+  <div id="mapwrap">__LOGO__
+__PLOT__</div>
   <aside id="panel">
-    __LOGO__
     <details id="alertas" open>
       <summary>🚨 Alertas (<span id="cuenta-alertas">0</span>)</summary>
       <ul id="lista-alertas"></ul>
@@ -476,6 +484,7 @@ html_final = (PAGINA.replace("__ROOT__", css_root)
 with open(ARCHIVO_SALIDA, "w", encoding="utf-8") as f:
     f.write(html_final)
 print(f"Listo: se generó {ARCHIVO_SALIDA}")
+
 
 
 
