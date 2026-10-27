@@ -1,14 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-🌾 Mapa de noticias del mercado de granos
+Mapa de noticias del mercado de granos
 
-- Busca noticias en Google News (RSS) y detecta los países mencionados.
-- Muestra MÁXIMO 20 noticias por país (las más recientes).
-- Al pasar el mouse sobre un círculo, se muestran las noticias en un panel lateral
-  con links clickeables. Al hacer clic en el círculo, el panel queda "fijado".
-- 🆕 Traduce los títulos al español automáticamente.
-- 🆕 Genera ALERTAS (suba/baja de granos, petróleo, gas natural y ataques bélicos).
-- 🆕 Paleta de colores, logo e imagen de fondo configurables.
+- Busca noticias en Google News (RSS) y detecta el país principal de cada una.
+- Sin noticias repetidas: se descartan las que cuentan la misma historia (aunque cambie la
+  fuente o la redacción, y también si una está en inglés y otra en español).
+- Filtros por producto o tema (trigo, maíz, soja, petróleo, gas, guerra, etc.).
+- Muestra como máximo 20 noticias por país. Al pasar el mouse sobre un círculo se ven en el
+  panel lateral; con un clic el panel queda fijado.
+- Traduce los títulos al español y genera alertas (suba/baja de granos, petróleo, gas natural
+  y ataques bélicos).
 - Genera un archivo index.html listo para publicar en GitHub Pages.
 
 En Colab: pegá cada bloque "# %%" en una celda. En la primera celda agregá:
@@ -22,50 +23,95 @@ QUERIES = [
     "malting", "grain taxes", "exportaciones soja", "cosecha gruesa", "aranceles granos",
     "cebada", "barley", "beer market", "biocombustibles", "grain prices", "grain",
     "harvest", "cosecha", "siembra", "Agriculture", "Breweries", "Beer Industry",
-    "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "Sunflower seed", "Sunflower oil", "Sunflower pellets", "Sunflower prices", "milling", "soybean meal", "aceite de palma", "palma", "palm oil", "tariffs",
-    # 🆕 para que las alertas de energía tengan material
+    "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "Sunflower seed",
+    "Sunflower oil", "Sunflower pellets", "Sunflower prices", "milling", "soybean meal",
+    "aceite de palma", "palma", "palm oil", "tariffs",
     "precio petróleo", "oil prices", "gas natural", "natural gas prices",
+    "sorgo", "sorghum", "arroz", "rice prices",
 ]
-DIAS = 7                 # noticias de los últimos N días
-MAX_POR_PAIS = 20        # máximo de noticias que se guardan/muestran por país
-MAX_ALERTAS = 12         # 🆕 máximo de alertas en el panel superior
+DIAS = 7                  # noticias de los últimos N días
+MAX_POR_PAIS = 20         # máximo de noticias que se MUESTRAN por país
+MAX_GUARDAR = 40          # noticias que se guardan por país para poder filtrar
+MAX_ALERTAS = 12          # máximo de alertas que se MUESTRAN en el panel superior
+MAX_ALERTAS_GUARDAR = 60  # alertas guardadas para poder filtrarlas
 ARCHIVO_SALIDA = "index.html"
 IDIOMAS = [("es-419", "AR", "AR:es-419"), ("en-US", "US", "US:en")]  # (hl, gl, ceid)
 
-# 🆕 Identidad visual según el Manual Normativo de la BCP (guía cromática, p. 9)
+# Qué tan parecidos tienen que ser dos títulos para considerarlos la misma noticia (0 a 1).
+# Más bajo = descarta más repetidas (riesgo: junta noticias distintas). Más alto = descarta menos.
+UMBRAL_ORIGINAL = 0.60    # se compara el título tal cual vino de Google News
+UMBRAL_TRADUCIDO = 0.50   # se compara de nuevo ya traducido (junta la versión en inglés y la en español)
+
+# Colores. Fondo más claro que antes; el rojo queda reservado para las alertas.
 COL = dict(
-    fondo="#e8f2df",      # verde muy claro (fondo y mar)
+    fondo="#f8faf5",      # fondo de la página y del mar
     panel="#ffffff",
-    borde="#dfe8cc",      # divisores (tinte claro del verde)
-    tierra="#d3e6c4",     # continentes
-    paises="#d3e6c4",     # (límites entre países: no se dibujan)
-    costa="#bcd7aa",      # costas
-    marcador="#2a8a43",   # verde: círculos normales
-    alerta="#D62828",     # rojo: SOLO para alertas (círculos, avisos y etiquetas)
+    borde="#e6ebdd",      # divisores
+    tierra="#dfe8d4",     # continentes
+    paises="#dfe8d4",
+    costa="#c4d3b6",      # costas
+    marcador="#2a8a43",   # círculos normales
+    alerta="#D62828",     # SOLO alertas
     verde="#94C24A",
     turquesa="#1CAB9E",
     titulo="#1E612C",
-    texto="#646363",      # gris institucional
-    suave="#8a8a8a",
+    texto="#4a4a4a",
+    suave="#7d7d7d",
     link="#1E612C",
 )
-# Tipografía del manual: Franklin Gothic (Heavy para títulos, Medium para texto).
-# Si el navegador no la tiene instalada, usa Libre Franklin (Google Fonts), que es muy parecida.
-FUENTE = "Franklin Gothic Medium, Libre Franklin, Arial Narrow, Arial, sans-serif"
-FUENTE_T = "Franklin Gothic Heavy, Libre Franklin, Arial Black, sans-serif"
-LOGO = "logo.png"        # logo BCP verde de una tinta (subilo al repo junto al script). "" = sin logo
-FONDO_IMAGEN = ""        # opcional: imagen de fondo. OJO: el manual no recomienda la marca color sobre fotos con textura
-VELO_FONDO = "rgba(232,242,223,0.88)"   # capa clara sobre la imagen de fondo
+# Tipografía: serif de estilo diario para titulares y sans neutra para el resto
+# (Google Fonts, se cargan solas). Para volver a Franklin Gothic, cambiá estas dos líneas.
+FUENTE = "Source Sans 3, Segoe UI, Helvetica Neue, Arial, sans-serif"
+FUENTE_T = "Source Serif 4, Georgia, Times New Roman, serif"
+GOOGLE_FONTS = "Source+Sans+3:wght@400;500;600&family=Source+Serif+4:wght@400;600;700"
+LOGO = "logo.png"         # logo (subilo al repo junto al script). "" = sin logo
+FONDO_IMAGEN = ""         # opcional: imagen de fondo
+VELO_FONDO = "rgba(248,250,245,0.92)"   # capa clara sobre la imagen de fondo
 
 # %% 2. Búsqueda de noticias (Google News RSS)
-import re, json, urllib.parse, os, base64, mimetypes
+import re, json, urllib.parse, os, base64, mimetypes, unicodedata
 import feedparser
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from time import mktime
-from concurrent.futures import ThreadPoolExecutor
-from deep_translator import GoogleTranslator   # 🆕
-ART = timezone(timedelta(hours=-3))             # 🆕 hora de Argentina (sin horario de verano)
+from deep_translator import GoogleTranslator
+ART = timezone(timedelta(hours=-3))   # hora de Argentina (sin horario de verano)
+
+_STOP = set("""de la el los las y en a un una unos unas que por con para del al se su sus es son lo le les
+ the of and in to for on at as by from with is are an its it this that after amid over new more than
+ un una ante sobre entre como mas más pero sin tras desde hasta hacia segun según""".split())
+
+
+def _singular(w):
+    """Saca la 's' / 'es' del plural para que 'tension' y 'tensions' cuenten como la misma palabra."""
+    if len(w) > 4 and w.endswith("es"):
+        return w[:-2]
+    if len(w) > 3 and w.endswith("s"):
+        return w[:-1]
+    return w
+
+
+def tokens(titulo):
+    """Palabras 'importantes' de un título (sin la fuente del final, tildes, mayúsculas ni conectores)."""
+    t = re.sub(r"\s+[-–|]\s+[^-–|]{2,40}$", "", titulo)
+    t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode().lower()
+    return frozenset(_singular(w) for w in re.findall(r"[a-z0-9]+", t) if len(w) > 2 and w not in _STOP)
+
+
+def quitar_repetidas(df, col, umbral):
+    """Se queda con la versión MÁS NUEVA de cada noticia y descarta las que son (casi) la misma
+    historia: similitud de Jaccard entre las palabras del título >= umbral."""
+    if not len(df):
+        return df
+    df = df.sort_values("fecha", ascending=False)
+    vistos, keep = [], []
+    for idx, t in zip(df.index, df[col]):
+        tk = tokens(t)
+        if tk and any(v and len(tk & v) / len(tk | v) >= umbral for v in vistos):
+            continue
+        vistos.append(tk)
+        keep.append(idx)
+    return df.loc[keep]
 
 
 def buscar_noticias(queries, dias, idiomas):
@@ -80,83 +126,82 @@ def buscar_noticias(queries, dias, idiomas):
                     continue
                 fecha = datetime.fromtimestamp(mktime(e.published_parsed), tz=timezone.utc)
                 if fecha >= desde:
-                    filas.append({"titulo": e.title, "link": e.link, "fecha": fecha,
+                    filas.append({"titulo": " ".join(e.title.split()), "link": e.link, "fecha": fecha,
                                   "fuente": getattr(e, "source", {}).get("title", "")})
     if not filas:
         return pd.DataFrame(columns=["titulo", "link", "fecha", "fuente"])
-    df = pd.DataFrame(filas).drop_duplicates("titulo").sort_values("fecha", ascending=False)
-    return df.reset_index(drop=True)
+    df = pd.DataFrame(filas).sort_values("fecha", ascending=False).drop_duplicates("link")
+    df = quitar_repetidas(df, "titulo", UMBRAL_ORIGINAL)
+    return df.sort_values("fecha", ascending=False).reset_index(drop=True)
 
 
 noticias = buscar_noticias(QUERIES, DIAS, IDIOMAS)
-print(f"{len(noticias)} noticias encontradas")
+print(f"{len(noticias)} noticias distintas encontradas")
 
 # %% 3. Detección de países
-PAISES = {  # nombre: (lat, lon, [alias])
-    "Argentina": (-34.6, -64.0, ["argentina", "argentino", "argentinos", "rosario", "bolsa de cereales", "buenos aires"]),
-    "Brasil": (-14.2, -51.9, ["brasil", "brazil", "brasileño", "brasileña", "mato grosso", "paranaguá"]),
-    "Estados Unidos": (39.8, -98.6, ["estados unidos", "ee.uu", "eeuu", "usa", "u.s.", "united states", "usda", "chicago", "cbot", "iowa", "illinois", "midwest"]),
-    "China": (35.9, 104.2, ["china", "chino", "china's", "chinese", "beijing", "pekín", "dalian"]),
-    "India": (20.6, 79.0, ["india", "indian"]),
-    "Rusia": (61.5, 105.3, ["rusia", "russia", "russian", "ruso", "rusa"]),
-    "Ucrania": (48.4, 31.2, ["ucrania", "ukraine", "ukrainian", "ucraniano", "odesa", "odessa"]),
+# Solo países que importan para el agro o para la geopolítica de granos y energía.
+# Un alias que empieza con "=" distingue mayúsculas (así "US" no matchea "us" en otro idioma).
+# Para agregar un país: sumá una línea con (lat, lon, [alias]).
+PAISES = {
+    # Grandes productores y exportadores
+    "Argentina": (-34.6, -64.0, ["argentina", "argentino", "argentinos", "argentinas", "rosario",
+                                 "bolsa de cereales", "buenos aires", "bahía blanca", "bahia blanca"]),
+    "Brasil": (-14.2, -51.9, ["brasil", "brazil", "brasileño", "brasileña", "mato grosso", "paranaguá", "conab"]),
+    "Estados Unidos": (39.8, -98.6, ["estados unidos", "ee.uu", "eeuu", "united states", "usda", "chicago",
+                                     "cbot", "iowa", "illinois", "midwest", "washington", "trump",
+                                     "casa blanca", "white house", "=US", "=USA", "=U.S.", "=U.S.A."]),
     "Canadá": (56.1, -106.3, ["canadá", "canada", "canadian", "canadiense"]),
     "Australia": (-25.3, 133.8, ["australia", "australian", "australiano"]),
-    "Francia": (46.2, 2.2, ["francia", "france", "french", "francés"]),
-    "Alemania": (51.2, 10.5, ["alemania", "germany", "german"]),
-    "Unión Europea": (50.0, 10.0, ["unión europea", "european union", "eu ", "europa", "europe", "euronext"]),
-    "Paraguay": (-23.4, -58.4, ["paraguay", "paraguayo"]),
-    "Uruguay": (-32.5, -55.8, ["uruguay", "uruguayo"]),
-    "Bolivia": (-16.3, -63.6, ["bolivia", "boliviano"]),
-    "Chile": (-35.7, -71.5, ["chile", "chileno"]),
-    "Colombia": (4.6, -74.1, ["colombia", "colombiano"]),
-    "Perú": (-9.2, -75.0, ["perú", "peru", "peruano"]),
-    "México": (23.6, -102.5, ["méxico", "mexico", "mexicano", "mexican"]),
-    "Egipto": (26.8, 30.8, ["egipto", "egypt", "egyptian"]),
-    "Turquía": (38.9, 35.2, ["turquía", "turkey", "turkish", "türkiye"]),
-    "Irán": (32.4, 53.7, ["irán", "iran", "iranian"]),
-    "Arabia Saudita": (23.9, 45.1, ["arabia saudita", "saudi"]),
-    "Argelia": (28.0, 1.7, ["argelia", "algeria", "algerian"]),
-    "Marruecos": (31.8, -7.1, ["marruecos", "morocco", "moroccan"]),
-    "Nigeria": (9.1, 8.7, ["nigeria", "nigerian"]),
-    "Sudáfrica": (-30.6, 22.9, ["sudáfrica", "south africa"]),
-    "Kazajistán": (48.0, 66.9, ["kazajistán", "kazakhstan", "kazakh"]),
-    "Rumania": (45.9, 25.0, ["rumania", "romania", "romanian"]),
-    "Polonia": (51.9, 19.1, ["polonia", "poland", "polish"]),
-    "Pakistán": (30.4, 69.3, ["pakistán", "pakistan"]),
-    "Bangladesh": (23.7, 90.4, ["bangladesh", "bangladés"]),
+    "Rusia": (61.5, 105.3, ["rusia", "russia", "russian", "ruso", "rusa", "kremlin", "moscú", "moscow", "putin"]),
+    "Ucrania": (48.4, 31.2, ["ucrania", "ukraine", "ukrainian", "ucraniano", "odesa", "odessa", "kiev",
+                             "kyiv", "zelensky", "zelenski"]),
+    "Unión Europea": (50.0, 10.0, ["unión europea", "european union", "europa", "europe", "euronext",
+                                   "bruselas", "brussels", "=EU", "=UE"]),
     "Indonesia": (-0.8, 113.9, ["indonesia", "indonesian"]),
-    "Vietnam": (14.1, 108.3, ["vietnam", "vietnamese"]),
-    "Tailandia": (15.9, 100.99, ["tailandia", "thailand", "thai"]),
-    "Filipinas": (12.9, 121.8, ["filipinas", "philippines", "philippine"]),
-    "Japón": (36.2, 138.3, ["japón", "japan", "japanese"]),
-    "Corea del Sur": (35.9, 127.8, ["corea del sur", "south korea", "korean"]),
+    "Malasia": (4.2, 102.0, ["malasia", "malaysia", "malaysian"]),
+    # Grandes compradores
+    "China": (35.9, 104.2, ["china", "chino", "china's", "chinese", "beijing", "pekín", "dalian", "xi jinping"]),
+    "India": (20.6, 79.0, ["india", "indian"]),
+    "Egipto": (26.8, 30.8, ["egipto", "egypt", "egyptian"]),
+    # Energía y conflictos
+    "Arabia Saudita": (23.9, 45.1, ["arabia saudita", "saudi", "riad", "riyadh"]),
+    "Irán": (32.4, 53.7, ["irán", "iran", "iranian", "teherán", "tehran", "ormuz", "hormuz"]),
+    "Israel": (31.0, 34.9, ["israel", "israeli", "israelí", "gaza", "hamás", "hamas", "tel aviv"]),
 }
 
-patrones = {p: re.compile(r"(?<!\w)(" + "|".join(re.escape(a) for a in al) + r")(?!\w)", re.I)
-            for p, (_, _, al) in PAISES.items()}
+
+def _compilar(aliases, flags):
+    if not aliases:
+        return None
+    return re.compile(r"(?<![\w$])(" + "|".join(re.escape(a) for a in aliases) + r")(?![\w$])", flags)
 
 
-def detectar_paises(texto):
-    return [p for p, rx in patrones.items() if rx.search(texto + " ")]
+patrones = {}
+for _p, (_, _, _al) in PAISES.items():
+    _cs = [a[1:] for a in _al if a.startswith("=")]
+    _ci = [a for a in _al if not a.startswith("=")]
+    patrones[_p] = (_compilar(_ci, re.I), _compilar(_cs, 0))
 
 
-if len(noticias):
-    noticias["paises"] = noticias["titulo"].apply(detectar_paises)
-    con_pais = noticias[noticias["paises"].str.len() > 0]
-else:
-    con_pais = noticias.assign(paises=[])
-print(f"{len(con_pais)} de {len(noticias)} noticias mencionan algún país")
+def detectar_pais(texto):
+    """Devuelve UN solo país: el que aparece primero en el título (así una noticia no se repite en varios países)."""
+    mejor, pos = None, 10**9
+    for p, rxs in patrones.items():
+        for rx in rxs:
+            m = rx.search(texto) if rx else None
+            if m and m.start() < pos:
+                mejor, pos = p, m.start()
+    return mejor
 
-# %% 3b. 🆕 Detección de alertas (se evalúa sobre el título ORIGINAL, en español o inglés)
+# %% 3b. Detección de alertas (se evalúa sobre el título ORIGINAL, en español o inglés)
 _rx = lambda p: re.compile(p, re.I)
 _ini, _fin = r"(?<!\w)(?:", r")(?!\w)"
 
 RX_ACTIVOS = {
-    "🌾 Granos": _rx(_ini + r"soja|soya|trigo|ma[ií]z|cebada|girasol|palma|granos?|soybeans?|wheat|corn|barley|grains?|sunflower|palm oil|oilseeds?" + _fin),
-    "🛢️ Petróleo": _rx(_ini + r"petr[oó]leo|crudo|brent|wti|crude|barril(?:es)?|barrels?" + _fin
-                       + r"|(?<!sunflower )(?<!palm )(?<!soybean )(?<!vegetable )(?<!olive )(?<!\w)oil prices?(?!\w)"),
-    "🔥 Gas natural": _rx(_ini + r"gas natural|natural gas|gnl|lng" + _fin),
+    "Granos": _rx(_ini + r"soja|soya|trigo|ma[ií]z|cebada|girasol|palma|granos?|soybeans?|wheat|corn|barley|grains?|sunflower|palm oil|oilseeds?" + _fin),
+    "Petróleo": _rx(_ini + r"petr[oó]leo|crudo|brent|wti|crude|barril(?:es)?|barrels?" + _fin
+                    + r"|(?<!sunflower )(?<!palm )(?<!soybean )(?<!vegetable )(?<!olive )(?<!\w)oil prices?(?!\w)"),
+    "Gas natural": _rx(_ini + r"gas natural|natural gas|gnl|lng" + _fin),
 }
 RX_SUBA = _rx(r"(?<!\w)(?:alz\w*|aument\w*|repunt\w*|sub[eií]\w*|suba|subas|rall?y|surge|surges|surging|soar\w*|jump\w*|rise|rises|rising|rose|climb\w*|gain\w*|higher|hike\w*)(?!\w)")
 RX_BAJA = _rx(r"(?<!\w)(?:baj[aóe]\w*|cae|caen|caer|ca[ií]d\w*|cay[oó]\w*|desplom\w*|retroced\w*|derrump\w*|falls?|fell|falling|drop\w*|plung\w*|slump\w*|declin\w*|lower|tumbl\w*|slid\w*|sink\w*|sank)(?!\w)")
@@ -173,34 +218,46 @@ def clasificar(titulo):
             if rx.search(titulo):
                 out.append(f"{nombre} {flecha}")
     if RX_BELICO.search(titulo):
-        out.append("⚔️ Ataque bélico")
+        out.append("Ataque bélico")
     return out
 
-# %% 4. Agrupar por país (máx. MAX_POR_PAIS, las más recientes)
-conteo = {}   # país -> lista de noticias (ya vienen ordenadas de más nueva a más vieja)
-for _, r in con_pais.iterrows():
-    for p in r["paises"]:
-        lista = conteo.setdefault(p, [])
-        if len(lista) < MAX_POR_PAIS:
-            lista.append({
-                "t": r["titulo"],            # se reemplaza por la traducción en el paso 4b
-                "o": r["titulo"],            # 🆕 título original
-                "l": r["link"],
-                "f": r["fuente"],
-                "d": r["fecha"].astimezone(ART).strftime("%d/%m %H:%M"),
-                "a": clasificar(r["titulo"]),  # 🆕 alertas
-            })
+# %% 3c. Productos y temas para el filtro (se detectan en el título original y en el traducido)
+PRODUCTOS = {  # id: (etiqueta del botón, expresión regular)
+    "trigo": ("Trigo", r"trigo|wheat"),
+    "maiz": ("Maíz", r"ma[ií]z|corn"),
+    "soja": ("Soja", r"soja|soya|soybeans?|soy meal|soy oil|soymeal|soybean"),
+    "cebada": ("Cebada y malta", r"cebada|barley|malta|malting|malt|cerveza|beer|brewer\w*|cervecer\w*"),
+    "girasol": ("Girasol", r"girasol|sunflower"),
+    "sorgo": ("Sorgo", r"sorgo|sorghum"),
+    "arroz": ("Arroz", r"arroz|rice"),
+    "palma": ("Aceite de palma", r"aceite de palma|palm oil|palma|palm"),
+    "petroleo": ("Petróleo", r"petr[oó]leo|crudo|brent|wti|crude|barril(?:es)?|barrels?"
+                             r"|(?<!sunflower )(?<!palm )(?<!soybean )(?<!vegetable )(?<!olive )oil prices?"),
+    "gas": ("Gas natural", r"gas natural|natural gas|gnl|lng"),
+    "guerra": ("Guerra y conflictos", r"guerras?|wars?|conflicto\w*|conflicts?|ataque\w*|attacks?|attacked|misil\w*|missiles?|dron(?:es)?|drones?|invasi[oó]n|invasion|bombard\w*|bombing|ofensiva|offensive|airstrikes?"),
+    "bio": ("Biocombustibles", r"biocombustibles?|biodi[eé]sel|bioetanol|etanol|ethanol|biofuels?"),
+    "aranceles": ("Aranceles e impuestos", r"aranceles?|tariffs?|retenciones|derechos de exportaci[oó]n|export (?:tax|taxes|duty|duties)|impuestos?"),
+    "cosecha": ("Cosecha y siembra", r"cosecha\w*|harvest\w*|siembra|planting|sowing|sequ[ií]a|drought"),
+}
+RX_PRODUCTOS = {k: _rx(_ini + v[1] + _fin) for k, v in PRODUCTOS.items()}
 
-# %% 4b. 🆕 Lista global de alertas + traducción al español
-alertas_lista = []
-for _, r in noticias.iterrows():
-    a = clasificar(r["titulo"])
-    if a:
-        alertas_lista.append({"t": r["titulo"], "o": r["titulo"], "l": r["link"], "f": r["fuente"],
-                              "d": r["fecha"].astimezone(ART).strftime("%d/%m %H:%M"), "a": a})
-    if len(alertas_lista) >= MAX_ALERTAS:
-        break
 
+def etiquetar(texto):
+    """Lista de ids de productos/temas que menciona un texto."""
+    return [k for k, rx in RX_PRODUCTOS.items() if rx.search(texto)]
+
+# %% 4. Candidatas, traducción y segunda pasada contra repetidas
+noticias["pais"] = [detectar_pais(t) for t in noticias["titulo"]]
+noticias["alertas"] = [clasificar(t) for t in noticias["titulo"]]
+print(f"{noticias['pais'].notna().sum()} de {len(noticias)} noticias mencionan algún país del mapa")
+
+# Para no traducir cientos de títulos de más, se arma una lista corta de candidatas
+# (las más nuevas de cada país + las más nuevas con alerta). Ya vienen ordenadas por fecha.
+_idx = set()
+for _p, _g in noticias[noticias["pais"].notna()].groupby("pais"):
+    _idx |= set(_g.head(MAX_GUARDAR + 20).index)
+_idx |= set(noticias[noticias["alertas"].map(bool)].head(MAX_ALERTAS_GUARDAR + 30).index)
+cand = noticias.loc[sorted(_idx)].copy()
 
 import time
 errores_trad = []
@@ -211,8 +268,8 @@ def _traducir_uno(t):
 
 
 def traducir_lote(textos):
-    """Traduce varios títulos en UNA sola consulta (uno por línea). Así se hacen ~20 consultas
-    en vez de cientos, y Google no bloquea a GitHub por exceso de pedidos."""
+    """Traduce varios títulos en UNA sola consulta (uno por línea). Así se hacen pocas consultas
+    en vez de cientos, y Google no bloquea por exceso de pedidos."""
     for intento in range(3):
         try:
             res = GoogleTranslator(source="auto", target="es").translate("\n".join(textos))
@@ -234,13 +291,12 @@ def traducir_lote(textos):
     return out
 
 
-originales = list({n["o"] for v in conteo.values() for n in v} | {n["o"] for n in alertas_lista})
+originales = list(dict.fromkeys(cand["titulo"]))
 lotes, actual_l, largo = [], [], 0
 for t in originales:
-    t1 = t.replace("\n", " ")
-    if actual_l and (largo + len(t1) > 3800 or len(actual_l) >= 40):
+    if actual_l and (largo + len(t) > 3800 or len(actual_l) >= 40):
         lotes.append(actual_l); actual_l, largo = [], 0
-    actual_l.append(t1); largo += len(t1) + 1
+    actual_l.append(t); largo += len(t) + 1
 if actual_l:
     lotes.append(actual_l)
 traducciones = {}
@@ -248,36 +304,61 @@ for lote in lotes:
     for t_orig, t_es in zip(lote, traducir_lote(lote)):
         traducciones[t_orig] = t_es
     time.sleep(0.5)
-for t in originales:
-    traducciones.setdefault(t, t)
-for n in [x for v in conteo.values() for x in v] + alertas_lista:
-    n["t"] = traducciones[n["o"]]
-_cambiados = sum(1 for t in originales if traducciones[t].strip() != t.strip())
-print(f"{len(originales)} títulos · {_cambiados} traducidos · {len(alertas_lista)} alertas")
+cand["es"] = [traducciones.get(t, t) for t in cand["titulo"]]
+print(f"{len(originales)} títulos · {sum(1 for t in originales if traducciones.get(t, t).strip() != t.strip())} traducidos")
 if errores_trad:
-    print(f"⚠️ {len(errores_trad)} errores de traducción. Primero: {errores_trad[0]}")
+    print(f"Aviso: {len(errores_trad)} errores de traducción. Primero: {errores_trad[0]}")
+
+# Segunda pasada: ya en español, la versión en inglés y la en español de una misma noticia se parecen
+_antes = len(cand)
+cand = quitar_repetidas(cand, "es", UMBRAL_TRADUCIDO)
+print(f"{_antes - len(cand)} repetidas más descartadas tras traducir")
+
+
+def _item(r):
+    return {
+        "t": r["es"],                       # título en español
+        "o": r["titulo"],                   # título original
+        "l": r["link"],
+        "f": r["fuente"],
+        "d": r["fecha"].astimezone(ART).strftime("%d/%m %H:%M"),
+        "a": r["alertas"],                  # alertas
+        "p": etiquetar(r["titulo"] + " " + r["es"]),   # productos/temas (para el filtro)
+    }
+
+
+# Cada noticia va en UN solo país (de más nueva a más vieja)
+conteo = {}
+for _, r in cand[cand["pais"].notna()].iterrows():
+    lista = conteo.setdefault(r["pais"], [])
+    if len(lista) < MAX_GUARDAR:
+        lista.append(_item(r))
+
+alertas_lista = [_item(r) for _, r in cand[cand["alertas"].map(bool)].head(MAX_ALERTAS_GUARDAR).iterrows()]
+print(f"{len(alertas_lista)} alertas")
 
 paises_ord = sorted(conteo, key=lambda p: len(conteo[p]), reverse=True)
-total_mostradas = sum(len(v) for v in conteo.values())
+vis = {p: conteo[p][:MAX_POR_PAIS] for p in paises_ord}      # lo que se muestra sin filtros
+total_mostradas = sum(len(v) for v in vis.values())
 
 # %% 5. Mapa
 import plotly.graph_objects as go
 
 lats = [PAISES[p][0] for p in paises_ord]
 lons = [PAISES[p][1] for p in paises_ord]
-cant = [len(conteo[p]) for p in paises_ord]
-n_alert = [sum(1 for x in conteo[p] if x["a"]) for p in paises_ord]          # 🆕
-colores = [COL["alerta"] if k else COL["marcador"] for k in n_alert]          # 🆕
-bordes = ["#ffffff"] * len(n_alert)                                           # 🆕
+cant = [len(vis[p]) for p in paises_ord]
+n_alert = [sum(1 for x in vis[p] if x["a"]) for p in paises_ord]
+colores = [COL["alerta"] if k else COL["marcador"] for k in n_alert]
+bordes = ["#ffffff"] * len(n_alert)
 tams = [min(12 + 2 * n, 50) for n in cant]
 hover = [f"<b>{p}</b> · {n} noticias"
-         + (f" · <span style='color:{COL['alerta']}'>▲ {k} alerta{'s' if k > 1 else ''}</span>" if k else "")
+         + (f" · <span style='color:{COL['alerta']}'>{k} alerta{'s' if k > 1 else ''}</span>" if k else "")
          + "<br><i>Clic para fijar las noticias en el panel</i>"
          for p, n, k in zip(paises_ord, cant, n_alert)]
 
 fig = go.Figure()
 
-# Efecto "glow"
+# Efecto de halo
 for escala, op in [(2.4, 0.10), (1.6, 0.20)]:
     fig.add_trace(go.Scattergeo(
         lat=lats, lon=lons, mode="markers", hoverinfo="skip", showlegend=False,
@@ -295,7 +376,7 @@ fig.add_trace(go.Scattergeo(
     marker=dict(size=tams, color=colores, opacity=0.95, line=dict(width=2, color=bordes)),
 ))
 
-# 🆕 Fondo transparente: el color/imagen de fondo lo pone el HTML (así se ve la imagen)
+# Fondo transparente: el color/imagen de fondo lo pone el HTML
 fig.update_geos(
     projection_type="natural earth",
     showland=True, landcolor=COL["tierra"],
@@ -343,23 +424,84 @@ function crearItem(n) {
 function mostrar(pais) {
   if (pais === actual) return;   // no redibujar la lista si ya es la misma (evita perder clics)
   actual = pais;
-  var items = DATA[pais] || [];
+  var items = visibles(pais);
   titulo.textContent = pais + ' · ' + items.length + ' noticias';
   panel.innerHTML = '';
   items.forEach(function (n) { panel.appendChild(crearItem(n)); });
+  if (!items.length) panel.innerHTML = '<li>Sin noticias para este filtro.</li>';
   panel.scrollTop = 0;
 }
-// Panel de alertas
-document.getElementById('cuenta-alertas').textContent = ALERTAS.length;
-if (!ALERTAS.length) {
-  listaAl.innerHTML = '<li>Sin alertas en este período.</li>';
-} else {
-  ALERTAS.forEach(function (n) { listaAl.appendChild(crearItem(n)); });
+// ----- Filtros por producto / tema -----
+var MAXP = __MAXP__, MAXA = __MAXA__;
+var COL_AL = '__COL_AL__', COL_OK = '__COL_OK__';
+var PAISES = __PAISES__;
+var TAGS = __TAGS__;
+var sel = {}, soloAl = false;
+function pasa(n) {
+  if (soloAl && !(n.a && n.a.length)) return false;
+  if (!Object.keys(sel).length) return true;
+  return (n.p || []).some(function (t) { return sel[t]; });
 }
+function visibles(pais) { return (DATA[pais] || []).filter(pasa).slice(0, MAXP); }
+function renderAlertas() {
+  var it = ALERTAS.filter(pasa).slice(0, MAXA);
+  document.getElementById('cuenta-alertas').textContent = it.length;
+  listaAl.innerHTML = '';
+  if (!it.length) { listaAl.innerHTML = '<li>Sin alertas para este filtro.</li>'; return; }
+  it.forEach(function (n) { listaAl.appendChild(crearItem(n)); });
+}
+// Recalcula tamaño, color y cartel de cada círculo según el filtro (los países sin noticias se ocultan)
+function aplicarFiltro() {
+  var sizes = [], cols = [], txt = [], hov = [], total = 0;
+  PAISES.forEach(function (p) {
+    var it = visibles(p), n = it.length;
+    var k = it.filter(function (x) { return x.a && x.a.length; }).length;
+    total += n;
+    sizes.push(n ? Math.min(12 + 2 * n, 50) : 0);
+    cols.push(k ? COL_AL : COL_OK);
+    txt.push(n ? p : '');
+    hov.push(n ? '<b>' + p + '</b> · ' + n + ' noticias'
+      + (k ? " · <span style='color:" + COL_AL + "'>" + k + ' alerta' + (k > 1 ? 's' : '') + '</span>' : '')
+      + '<br><i>Clic para fijar las noticias en el panel</i>' : '');
+  });
+  var glow = function (f) { return sizes.map(function (x) { return x * f; }); };
+  Plotly.restyle(gd, {'marker.size': [glow(2.4)], 'marker.color': [cols]}, [0]);
+  Plotly.restyle(gd, {'marker.size': [glow(1.6)], 'marker.color': [cols]}, [1]);
+  Plotly.restyle(gd, {'marker.size': [sizes], 'marker.color': [cols], 'text': [txt], 'hovertext': [hov]}, [2]);
+  var nt = document.getElementById('n-total'); if (nt) nt.textContent = total;
+}
+function refrescarPanel() { var p = fijado || actual; actual = null; if (p) mostrar(p); }
+// Barra de botones
+var barra = document.getElementById('filtros');
+var cuenta = {};
+Object.keys(DATA).forEach(function (p) {
+  DATA[p].forEach(function (n) { (n.p || []).forEach(function (t) { cuenta[t] = (cuenta[t] || 0) + 1; }); });
+});
+function chip(txt, cls, fn) {
+  var b = document.createElement('button');
+  b.type = 'button'; b.className = 'chip ' + cls; b.textContent = txt;
+  b.addEventListener('click', fn); barra.appendChild(b); return b;
+}
+var btnTodos = chip('Todos', '', function () { sel = {}; soloAl = false; cambiar(); });
+var chips = {};
+TAGS.forEach(function (t) {
+  chips[t[0]] = chip(t[1] + (cuenta[t[0]] ? ' (' + cuenta[t[0]] + ')' : ''), cuenta[t[0]] ? '' : 'vacio', function () {
+    if (sel[t[0]]) { delete sel[t[0]]; } else { sel[t[0]] = true; }
+    cambiar();
+  });
+});
+var btnAl = chip('Solo alertas', 'al', function () { soloAl = !soloAl; cambiar(); });
+function cambiar() {
+  btnTodos.classList.toggle('on', !Object.keys(sel).length && !soloAl);
+  Object.keys(chips).forEach(function (k) { chips[k].classList.toggle('on', !!sel[k]); });
+  btnAl.classList.toggle('on', soloAl);
+  aplicarFiltro(); renderAlertas(); refrescarPanel();
+}
+cambiar();
 function actualizarHint() {
   hint.textContent = fijado
-    ? (TOUCH ? '📌 Mostrando las noticias de ' + fijado + '. Tocá otro círculo para cambiar.'
-             : '📌 Fijado: ' + fijado + '. Clic en el mismo círculo para soltar, o en otro para cambiar.')
+    ? (TOUCH ? 'Mostrando las noticias de ' + fijado + '. Tocá otro círculo para cambiar.'
+             : 'Fijado: ' + fijado + '. Clic en el mismo círculo para soltar, o en otro para cambiar.')
     : (TOUCH ? 'Tocá un círculo del mapa para ver sus noticias. Rojo = tiene alertas.'
              : 'Pasá el mouse sobre un círculo para ver sus noticias. Clic para fijarlas. Rojo = tiene alertas.');
 }
@@ -406,7 +548,11 @@ window.addEventListener('resize', ajustar);
 _js = lambda obj: json.dumps(obj, ensure_ascii=False).replace("</", "<\\/")
 post_script = (POST_SCRIPT
                .replace("__DATA__", _js(conteo))
-               .replace("__ALERTAS__", _js(alertas_lista)))
+               .replace("__ALERTAS__", _js(alertas_lista))
+               .replace("__PAISES__", _js(paises_ord))
+               .replace("__TAGS__", _js([[k, v[0]] for k, v in PRODUCTOS.items()]))
+               .replace("__MAXP__", str(MAX_POR_PAIS)).replace("__MAXA__", str(MAX_ALERTAS))
+               .replace("__COL_AL__", COL["alerta"]).replace("__COL_OK__", COL["marcador"]))
 
 plot_html = fig.to_html(
     full_html=False, include_plotlyjs="cdn", div_id="mapa",
@@ -416,7 +562,7 @@ plot_html = fig.to_html(
 )
 
 
-# 🆕 Logo e imagen de fondo: si es un archivo local, se incrusta en el HTML (base64)
+# Logo e imagen de fondo: si es un archivo local, se incrusta en el HTML (base64)
 def src_imagen(ruta):
     if not ruta:
         return ""
@@ -426,7 +572,7 @@ def src_imagen(ruta):
         mime = mimetypes.guess_type(ruta)[0] or "image/png"
         with open(ruta, "rb") as fh:
             return f"data:{mime};base64," + base64.b64encode(fh.read()).decode()
-    print(f"⚠️ No encontré la imagen '{ruta}': se omite.")
+    print(f"Aviso: no encontré la imagen '{ruta}', se omite.")
     return ""
 
 
@@ -437,18 +583,19 @@ css_fondo = (f"background-image:linear-gradient({VELO_FONDO},{VELO_FONDO}),url('
              if fondo_src else "")
 ahora = datetime.now(ART).strftime("%d/%m/%Y %H:%M")
 cab_html = ('<div id="cab">'
-            + (f'<img src="{logo_src}" alt="BCP · Bolsa de Cereales y Productos de Bahía Blanca"><div class="sep"></div>' if logo_src else "")
-            + '<div><h1><b>Mercado de granos:</b>dónde está la noticia</h1>'
-            + f'<p>{total_mostradas} noticias &nbsp;·&nbsp; últimos {DIAS} días &nbsp;·&nbsp; actualizado {ahora}</p></div></div>')
+            + (f'<img src="{logo_src}" alt="Bolsa de Cereales y Productos de Bahía Blanca"><div class="sep"></div>' if logo_src else "")
+            + '<div><h1>Noticias del mercado de granos</h1>'
+            + f'<p><span id="n-total">{total_mostradas}</span> noticias &nbsp;·&nbsp; últimos {DIAS} días &nbsp;·&nbsp; actualizado {ahora}</p></div></div>')
 
 PAGINA = """<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mapa de noticias del mercado de granos</title>
+<title>Noticias del mercado de granos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=__GFONTS__&display=swap" rel="stylesheet">
 <style>
   __ROOT__
   html, body { margin:0; height:100%; overflow:hidden; background:var(--fondo); font-family:var(--fuente); color:var(--texto); }
@@ -458,24 +605,31 @@ PAGINA = """<!DOCTYPE html>
   #mapcont { position:relative; flex:1 1 0; min-height:0; }
   #mapcont .plotly-graph-div { width:100% !important; height:100% !important; }
   #cab { display:flex; align-items:center; gap:18px; padding:16px 24px 4px; }
-  #cab img { height:64px; width:auto; display:block; }
-  #cab .sep { width:2px; align-self:stretch; background:var(--titulo); opacity:.8; }
-  #cab h1 { margin:0; font-size:30px; line-height:1.12; font-weight:500; color:var(--titulo); }
-  #cab h1 b { display:block; font-family:var(--fuente-t); font-weight:900; }
-  #cab p { margin:8px 0 0; font-size:13px; color:var(--suave); }
-  #panel { flex:0 0 380px; width:380px; max-width:45vw; min-width:0; background:var(--panel); border-left:4px solid var(--verde); display:flex; flex-direction:column; }
-  #panel h2 { margin:0; padding:16px 16px 4px; font-family:var(--fuente-t); font-weight:900; font-size:17px; color:var(--titulo); }
+  #cab img { height:60px; width:auto; display:block; }
+  #cab .sep { width:1px; align-self:stretch; background:var(--costa); }
+  #cab h1 { margin:0; font-family:var(--fuente-t); font-size:27px; line-height:1.15; font-weight:700; color:var(--titulo); }
+  #cab p { margin:6px 0 0; font-size:13px; color:var(--suave); }
+  #filtros { display:flex; flex-wrap:wrap; gap:6px; padding:10px 24px 0; }
+  .chip { font:inherit; font-size:13px; cursor:pointer; padding:4px 10px; border-radius:3px; border:1px solid #cfd8c4; background:#fff; color:var(--texto); }
+  .chip:hover { border-color:var(--titulo); color:var(--titulo); }
+  .chip.on { background:var(--titulo); border-color:var(--titulo); color:#fff; }
+  .chip.al { border-color:#e3a3a3; color:var(--alerta); }
+  .chip.al:hover { border-color:var(--alerta); }
+  .chip.al.on { background:var(--alerta); border-color:var(--alerta); color:#fff; }
+  .chip.vacio { opacity:.45; }
+  #panel { flex:0 0 380px; width:380px; max-width:45vw; min-width:0; background:var(--panel); border-left:1px solid var(--borde); display:flex; flex-direction:column; }
+  #panel h2 { margin:0; padding:16px 16px 4px; font-family:var(--fuente-t); font-weight:700; font-size:18px; color:var(--titulo); }
   #hint { padding:0 16px 10px; font-size:12px; color:var(--suave); }
-  #alertas { margin:12px 8px 0; border:1px solid var(--alerta); border-left:5px solid var(--alerta); border-radius:6px; background:rgba(214,40,40,.07); }
-  #alertas summary { cursor:pointer; padding:8px 10px; font-family:var(--fuente-t); font-weight:900; font-size:14px; color:var(--titulo); }
+  #alertas { margin:12px 8px 0; border:1px solid #efc3c3; border-left:4px solid var(--alerta); border-radius:3px; background:#fdf6f6; }
+  #alertas summary { cursor:pointer; padding:8px 10px; font-family:var(--fuente-t); font-weight:700; font-size:15px; color:var(--titulo); }
   #lista-alertas { list-style:none; margin:0; padding:0 6px 6px; max-height:210px; overflow-y:auto; overscroll-behavior:contain; }
   #lista { list-style:none; margin:0; padding:0 8px 16px; overflow-y:auto; flex:1; }
   #lista li, #lista-alertas li { padding:10px 8px; border-bottom:1px solid var(--borde); }
   #lista li.alerta { border-left:3px solid var(--alerta); }
-  #lista a, #lista-alertas a { color:var(--link); text-decoration:none; font-size:14px; line-height:1.35; font-weight:500; }
+  #lista a, #lista-alertas a { font-family:var(--fuente-t); color:var(--link); text-decoration:none; font-size:15px; line-height:1.35; font-weight:400; }
   #lista a:hover, #lista-alertas a:hover { text-decoration:underline; }
-  #lista small, #lista-alertas small { display:block; margin-top:3px; color:var(--suave); font-size:11px; }
-  .badge { display:inline-block; margin:4px 4px 0 0; padding:1px 7px; border-radius:10px; font-size:11px; background:var(--alerta); color:#fff; font-weight:bold; }
+  #lista small, #lista-alertas small { display:block; margin-top:3px; color:var(--suave); font-size:12px; }
+  .badge { display:inline-block; margin:4px 4px 0 0; padding:1px 6px; border-radius:2px; font-size:11px; background:var(--alerta); color:#fff; font-weight:600; }
   .badge.bel { background:#9d1c1c; color:#fff; }
   #app { height:100%; height:100dvh; }
   #lista { overscroll-behavior:contain; -webkit-overflow-scrolling:touch; }
@@ -486,22 +640,24 @@ PAGINA = """<!DOCTYPE html>
     #cab img { height:34px; }
     #cab h1 { font-size:16px; }
     #cab p { font-size:10px; margin-top:3px; }
-    #panel { flex:1 1 0; width:auto; max-width:none; min-height:0; border-left:0; border-top:4px solid var(--verde); }
-    #panel h2 { font-size:15px; padding:10px 12px 2px; }
+    #filtros { flex-wrap:nowrap; overflow-x:auto; padding:6px 12px 0; }
+    .chip { white-space:nowrap; flex:0 0 auto; font-size:12px; padding:3px 9px; }
+    #panel { flex:1 1 0; width:auto; max-width:none; min-height:0; border-left:0; border-top:1px solid var(--borde); }
+    #panel h2 { font-size:16px; padding:10px 12px 2px; }
     #hint { padding:0 12px 6px; font-size:11px; }
     #lista-alertas { max-height:110px; }
     #lista li, #lista-alertas li { padding:12px 8px; }
-    #lista a, #lista-alertas a { font-size:15px; }
+    #lista a, #lista-alertas a { font-size:16px; }
     .modebar-container { display:none !important; }
   }
 </style>
 </head>
 <body>
 <div id="app">
-  <div id="mapwrap">__CAB__<div id="mapcont">__PLOT__</div></div>
+  <div id="mapwrap">__CAB__<div id="filtros"></div><div id="mapcont">__PLOT__</div></div>
   <aside id="panel">
     <details id="alertas" open>
-      <summary>🚨 Alertas (<span id="cuenta-alertas">0</span>)</summary>
+      <summary>Alertas (<span id="cuenta-alertas">0</span>)</summary>
       <ul id="lista-alertas"></ul>
     </details>
     <h2 id="titulo-panel">Noticias</h2>
@@ -514,15 +670,13 @@ PAGINA = """<!DOCTYPE html>
 """
 
 html_final = (PAGINA.replace("__ROOT__", css_root)
+                    .replace("__GFONTS__", GOOGLE_FONTS)
                     .replace("__FONDO__", css_fondo)
                     .replace("__CAB__", cab_html)
                     .replace("__PLOT__", plot_html))
 with open(ARCHIVO_SALIDA, "w", encoding="utf-8") as f:
     f.write(html_final)
 print(f"Listo: se generó {ARCHIVO_SALIDA}")
-
-
-
 
 
 
