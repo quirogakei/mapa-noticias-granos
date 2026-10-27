@@ -61,9 +61,9 @@ COL = dict(
 )
 # Tipografía: serif de estilo diario para titulares y sans neutra para el resto
 # (Google Fonts, se cargan solas). Para volver a Franklin Gothic, cambiá estas dos líneas.
-FUENTE = "Source Sans 3, Segoe UI, Helvetica Neue, Arial, sans-serif"
-FUENTE_T = "Source Serif 4, Georgia, Times New Roman, serif"
-GOOGLE_FONTS = "Source+Sans+3:wght@400;500;600&family=Source+Serif+4:wght@400;600;700"
+FUENTE = "Franklin Gothic Medium, Libre Franklin, Arial Narrow, Arial, sans-serif"
+FUENTE_T = "Franklin Gothic Heavy, Libre Franklin, Arial Black, sans-serif"
+GOOGLE_FONTS = "Libre+Franklin:wght@400;500;900"
 LOGO = "logo.png"         # logo (subilo al repo junto al script). "" = sin logo
 FONDO_IMAGEN = ""         # opcional: imagen de fondo
 VELO_FONDO = "rgba(248,250,245,0.92)"   # capa clara sobre la imagen de fondo
