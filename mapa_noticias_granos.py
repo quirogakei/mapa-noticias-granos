@@ -30,7 +30,7 @@ QUERIES_BASE = [
     "precio petróleo", "oil prices", "gas natural", "natural gas prices",
     "sorgo", "sorghum", "arroz", "rice prices",
 ]
-DIAS = 7                  # noticias de los últimos N días
+DIAS = 2                  # noticias de los últimos N días
 MAX_POR_PAIS = 20         # máximo de noticias que se MUESTRAN por país
 MAX_GUARDAR = 40          # noticias que se guardan por país para poder filtrar
 MAX_ALERTAS = 12          # máximo de alertas que se MUESTRAN en el panel superior
