@@ -31,9 +31,9 @@ QUERIES_BASE = [
     "sorgo", "sorghum", "arroz", "rice prices",
 ]
 DIAS = 2                  # noticias de los últimos N días
-MAX_POR_PAIS = 20         # máximo de noticias que se MUESTRAN por país
+MAX_POR_PAIS = 30         # máximo de noticias que se MUESTRAN por país
 MAX_GUARDAR = 40          # noticias que se guardan por país para poder filtrar
-MAX_ALERTAS = 12          # máximo de alertas que se MUESTRAN en el panel superior
+MAX_ALERTAS = 15          # máximo de alertas que se MUESTRAN en el panel superior
 MAX_ALERTAS_GUARDAR = 60  # alertas guardadas para poder filtrarlas
 ARCHIVO_SALIDA = "index.html"
 IDIOMAS = [("es-419", "AR", "AR:es-419"), ("en-US", "US", "US:en")]  # (hl, gl, ceid)
