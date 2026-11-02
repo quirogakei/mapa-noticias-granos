@@ -835,6 +835,7 @@ cand = noticias.loc[sorted(_idx)].copy()
 from langdetect import detect, DetectorFactory
 DetectorFactory.seed = 0
 errores_trad = []
+traduccion_bloqueada = False   # se pone en True al primer "TooManyRequests"
 _MAP_IDIOMA = {"zh-cn": "zh-CN", "zh-tw": "zh-TW"}
 
 
@@ -848,15 +849,38 @@ def idioma(titulo):
         return "auto"
 
 
+def _es_bloqueo(e):
+    s = repr(e)
+    return "TooManyRequests" in s or "429" in s
+
+
 def _traducir_uno(t, origen):
+    """Traduce un título. Si Google nos bloqueó, devuelve el original sin insistir."""
+    global traduccion_bloqueada
+    if traduccion_bloqueada:
+        return t
     try:
         return GoogleTranslator(source=origen, target="es").translate(t) or t
-    except Exception:
-        return GoogleTranslator(source="auto", target="es").translate(t) or t
+    except Exception as e:
+        if _es_bloqueo(e):
+            traduccion_bloqueada = True
+            errores_trad.append(repr(e)[:200])
+            return t
+        try:
+            return GoogleTranslator(source="auto", target="es").translate(t) or t
+        except Exception as e2:
+            errores_trad.append(repr(e2)[:200])
+            if _es_bloqueo(e2):
+                traduccion_bloqueada = True
+            return t
 
 
 def traducir_lote(textos, origen):
-    """Traduce varios títulos del MISMO idioma en una sola consulta."""
+    """Traduce varios títulos del MISMO idioma en una sola consulta.
+    Si Google bloquea (TooManyRequests), corta enseguida y devuelve los originales."""
+    global traduccion_bloqueada
+    if traduccion_bloqueada:
+        return list(textos)
     for intento in range(3):
         try:
             res = GoogleTranslator(source=origen, target="es").translate("\n".join(textos))
@@ -866,15 +890,20 @@ def traducir_lote(textos, origen):
             break
         except Exception as e:
             errores_trad.append(repr(e)[:200])
+            if _es_bloqueo(e):
+                traduccion_bloqueada = True
+                print("Aviso: Google Translate bloqueó las consultas; "
+                      "se muestran los títulos originales sin traducir.")
+                return list(textos)
             origen = "auto"
             time.sleep(2 * (intento + 1))
     out = []
     for t in textos:
-        try:
-            out.append(_traducir_uno(t, origen))
-        except Exception as e:
-            errores_trad.append(repr(e)[:200]); out.append(t)
-            time.sleep(1)
+        out.append(_traducir_uno(t, origen))
+        if traduccion_bloqueada:
+            out.extend(textos[len(out):])
+            break
+        time.sleep(1)
     return out
 
 
