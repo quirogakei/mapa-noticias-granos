@@ -1,4 +1,215 @@
+# -*- coding: utf-8 -*-
+"""
+Mapa de noticias del mercado de granos
 
+- Busca noticias en Google News (RSS) y se queda solo con las de los medios de la lista FUENTES.
+- Descarta las que no tratan de agro, energía o logística de granos, y detecta el país principal.
+- Sin noticias repetidas (también entre idiomas).
+- Filtros por producto o tema.
+- Traduce los títulos de CUALQUIER idioma al español (detecta el idioma de cada título).
+- Genera un archivo index.html listo para publicar en GitHub Pages.
+
+Requiere: pip install feedparser plotly pandas deep-translator langdetect
+"""
+
+# %% 1. Configuración
+QUERIES_BASE = [
+    "mercado de granos", "precio soja", "precio trigo", "precio maíz",
+    "grain market", "soybean prices", "wheat prices", "corn prices", "barley prices",
+    "malting", "grain taxes", "exportaciones soja", "cosecha gruesa", "aranceles granos",
+    "cebada", "barley", "beer market", "biocombustibles", "grain prices", "grain",
+    "harvest", "cosecha", "siembra", "Agriculture", "Breweries", "Beer Industry",
+    "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "Sunflower seed",
+    "Sunflower oil", "Sunflower pellets", "Sunflower prices", "milling", "soybean meal",
+    "aceite de palma", "palma", "palm oil", "tariffs",
+    "precio petróleo", "oil prices", "gas natural", "natural gas prices",
+    "sorgo", "sorghum", "arroz", "rice prices",
+]
+DIAS = 2                  # noticias de los últimos N días
+MAX_POR_PAIS = 30         # máximo de noticias que se MUESTRAN por país
+MAX_GUARDAR = 40          # noticias que se guardan por país para poder filtrar
+MAX_ALERTAS = 15          # máximo de alertas que se MUESTRAN en el panel superior
+MAX_ALERTAS_GUARDAR = 60  # alertas guardadas para poder filtrarlas
+ARCHIVO_SALIDA = "index.html"
+IDIOMAS = [("es-419", "AR", "AR:es-419"), ("en-US", "US", "US:en")]  # (hl, gl, ceid)
+ED_ES = IDIOMAS[0]
+ED_EN = IDIOMAS[1]
+ED_PT = ("pt-BR", "BR", "BR:pt-419")
+ED_DE = ("de", "DE", "DE:de")
+
+SOLO_FUENTES_CONFIABLES = True     # False = acepta cualquier medio (no recomendado)
+FUENTES = [
+    # Agro y granos
+    ("Agri-Pulse", "agri-pulse.com", "agro"),
+    ("AgWeb", "agweb.com", "agro"),
+    ("Successful Farming", "agriculture.com", "agro"),
+    ("DTN Agriculture", "dtn.com", "agro"),
+    ("Fastmarkets", "fastmarkets.com", "mercados"),
+    ("Grain Journal", "grainjournal.com", "agro"),
+    ("Global Agriculture", "global-agriculture.com", "agro"),
+    ("The Western Producer", "producer.com", "agro"),
+    ("Grain Central", "graincentral.com", "agro"),
+    ("Reuters", "reuters.com", "noticias"),
+    ("Associated Press", "apnews.com", "noticias"),
+    ("Brownfield Ag News", "brownfieldagnews.com", "agro"),
+    ("DTN Agriculture", "dtnpf.com", "mercados"),
+    ("Farm Progress", "farmprogress.com", "agro"),
+    ("Pro Farmer", "profarmer.com", "mercados"),
+    ("USDA", "usda.gov", "oficial"),
+    ("USDA Foreign Agricultural Service", "fas.usda.gov", "comercio exterior"),
+    ("USDA Agricultural Marketing Service", "ams.usda.gov", "mercados"),
+    ("USDA National Agricultural Statistics Service", "nass.usda.gov", "estadisticas"),
+    ("USDA Economic Research Service", "ers.usda.gov", "estadisticas"),
+    ("U.S. Wheat Associates", "uswheat.org", "agro"),
+    ("U.S. Grains Council", "grains.org", "agro"),
+    ("National Corn Growers Association", "ncga.com", "agro"),
+    ("American Soybean Association", "soygrowers.com", "agro"),
+    ("U.S. International Trade Commission", "usitc.gov", "comercio exterior"),
+    ("CME Group", "cmegroup.com", "mercados"),
+    ("Interfax", "interfax.com", "noticias"),
+    ("TASS", "tass.com", "noticias"),
+    ("IKAR - Institute for Agricultural Market Studies", "ikar.ru", "mercados"),
+    ("Agroinvestor", "agroinvestor.ru", "agro"),
+    ("AgroXXI", "agroxxi.ru", "agro"),
+    ("Ministerio de Agricultura de Rusia", "mcx.gov.ru", "oficial"),
+    ("Servicio Federal de Estadísticas de Rusia (Rosstat)", "rosstat.gov.ru", "estadisticas"),
+    ("Servicio Federal de Supervisión Veterinaria y Fitosanitaria", "fsvps.gov.ru", "oficial"),
+    ("The Hindu BusinessLine", "thehindubusinessline.com", "economia"),
+    ("The Economic Times", "economictimes.indiatimes.com", "economia"),
+    ("Agriwatch", "agriwatch.com", "mercados"),
+    ("Krishi Jagran", "krishijagran.com", "agro"),
+    ("Agriculture Today", "agriculturetoday.in", "agro"),
+    ("AGMARKNET", "agmarknet.gov.in", "mercados"),
+    ("Ministerio de Agricultura y Bienestar de los Agricultores", "agricoop.nic.in", "oficial"),
+    ("Agricultural and Processed Food Products Export Development Authority (APEDA)", "apeda.gov.in", "comercio exterior"),
+    ("Directorate General of Foreign Trade", "dgft.gov.in", "comercio exterior"),
+    ("Ministerio de Comercio e Industria de India", "commerce.gov.in", "oficial"),
+    ("Ministerio de Estadística e Implementación de Programas", "mospi.gov.in", "estadisticas"),
+    ("India Meteorological Department", "mausam.imd.gov.in", "clima"),
+    ("Terre-net", "terre-net.fr", "agro"),
+    ("La France Agricole", "lafranceagricole.fr", "agro"),
+    ("Réussir", "reussir.fr", "agro"),
+    ("Agra Presse", "agra.fr", "agro"),
+    ("FranceAgriMer", "franceagrimer.fr", "mercados"),
+    ("Ministerio de Agricultura de Francia", "agriculture.gouv.fr", "oficial"),
+    ("Arvalis", "arvalis.fr", "agro"),
+    ("Les Échos", "lesechos.fr", "economia"),
+    ("Franceinfo", "franceinfo.fr", "noticias"),
+    ("Agra Europe", "agra-europe.com", "agro"),
+    ("Euractiv", "euractiv.com", "politica comercial"),
+    ("Politico Europe", "politico.eu", "noticias"),
+    ("Comisión Europea - Agricultura y Desarrollo Rural", "agriculture.ec.europa.eu", "oficial"),
+    ("Eurostat", "ec.europa.eu", "estadisticas"),
+    ("Comisión Europea - Comercio", "policy.trade.ec.europa.eu", "comercio exterior"),
+    ("Copa-Cogeca", "copa-cogeca.eu", "agro"),
+    ("Parlamento Europeo", "europarl.europa.eu", "oficial"),
+    ("Consejo de la Unión Europea", "consilium.europa.eu", "oficial"),
+    ("Autoridad Europea de Seguridad Alimentaria (EFSA)", "efsa.europa.eu", "oficial"),
+    ("European CAP Network", "eu-cap-network.ec.europa.eu", "agro"),
+    ("Latifundist", "latifundist.com", "agro"),
+    ("AgroPortal.ua", "agroportal.ua", "agro"),
+    ("APK-Inform", "apk-inform.com", "mercados"),
+    ("Ukrinform", "ukrinform.net", "noticias"),
+    ("UkrAgroConsult", "ukragroconsult.com", "mercados"),
+    ("Ukrainian Grain Association", "uga.ua", "agro"),
+    ("Ministerio de Política Agraria y Alimentación de Ucrania", "minagro.gov.ua", "oficial"),
+    ("Servicio Estatal de Estadística de Ucrania", "ukrstat.gov.ua", "estadisticas"),
+    ("AgroTimes", "agrotimes.ua", "agro"),
+    ("RealAgriculture", "realagriculture.com", "agro"),
+    ("Grain News", "grainnews.ca", "agro"),
+    ("Farms.com", "farms.com", "agro"),
+    ("Agriculture and Agri-Food Canada", "agriculture.canada.ca", "oficial"),
+    ("Statistics Canada", "statcan.gc.ca", "estadisticas"),
+    ("Canadian Grain Commission", "grainscanada.gc.ca", "oficial"),
+    ("Canadian International Grains Institute", "cigi.ca", "agro"),
+    ("Canola Council of Canada", "canolacouncil.org", "agro"),
+    ("Canadian Canola Growers Association", "canolagrowers.com", "agro"),
+    ("Canadian Broadcasting Corporation (CBC)", "cbc.ca", "noticias"),
+    ("Xinhua", "english.news.cn", "noticias"),
+    ("China Daily", "chinadaily.com.cn", "noticias"),
+    ("China News Service", "ecns.cn", "noticias"),
+    ("CGTN", "cgtn.com", "noticias"),
+    ("Global Times", "globaltimes.cn", "noticias"),
+    ("Caixin Global", "caixinglobal.com", "economia"),
+    ("Yicai Global", "yicaiglobal.com", "economia"),
+    ("South China Morning Post", "scmp.com", "economia"),
+    ("China Economic Net", "en.ce.cn", "economia"),
+    ("China.org.cn", "china.org.cn", "noticias"),
+    ("China Briefing", "china-briefing.com", "comercio exterior"),
+    ("China Agricultural Information Network", "agri.cn", "agro"),
+    ("Ministry of Agriculture and Rural Affairs of China", "english.moa.gov.cn", "oficial"),
+    ("National Bureau of Statistics of China", "stats.gov.cn", "estadisticas"),
+    ("General Administration of Customs of China", "customs.gov.cn", "comercio exterior"),
+    ("Ministry of Commerce of China", "mofcom.gov.cn", "comercio exterior"),
+    ("MOFCOM Agricultural Trade Statistics", "wms.mofcom.gov.cn", "estadisticas"),
+    ("National Grain Trade Center", "grainmarket.com.cn", "mercados"),
+    ("Dalian Commodity Exchange", "dce.com.cn", "mercados"),
+    ("Zhengzhou Commodity Exchange", "czce.com.cn", "mercados"),
+    ("Farmers Weekly", "fwi.co.uk", "agro"),
+    ("Agrarheute", "agrarheute.com", "agro"),
+    ("AF News", "afnews.com.br", "agro"),
+    ("Canal Rural", "canalrural.com.br", "agro"),
+    ("Rural News", "ruralnews.agr.br", "agro"),
+    ("Agrolink", "agrolink.com.br", "agro"),
+    ("Globo Rural", "globorural.globo.com", "agro"),
+    ("Globo Rural", "globoplay.globo.com", "agro"),
+    ("Fertilizer International", "fertilizerinternational.com", "agro"),
+    ("FeedNavigator", "feednavigator.com", "agro"),
+    ("AgriBusiness Global", "agribusinessglobal.com", "agro"),
+    # Mercados de commodities y energía
+    ("Argus Media", "argusmedia.com", "mercados"),
+    ("ICIS", "icis.com", "mercados"),
+    ("CRU Group", "crugroup.com", "mercados"),
+    # Prensa internacional
+    ("AFP", "afp.com", "general"),
+    ("BBC News", "bbc.com", "general"),
+    ("BBC News", "bbc.co.uk", "general"),
+    ("CNBC", "cnbc.com", "general"),
+    ("The Wall Street Journal", "wsj.com", "general"),
+    ("The Economist", "economist.com", "general"),
+    ("Nikkei Asia", "asia.nikkei.com", "general"),
+    ("Al Jazeera", "aljazeera.com", "general"),
+    ("The Guardian", "theguardian.com", "general"),
+    # Argentina
+    ("Agrofy News", "news.agrofy.com.ar", "agro"),
+    ("Infocampo", "infocampo.com.ar", "agro"),
+    ("Bichos de Campo", "bichosdecampo.com", "agro"),
+    ("Agrositio", "agrositio.com.ar", "agro"),
+    ("Ruralnet", "ruralnet.com.ar", "agro"),
+    ("Agritotal", "agritotal.com", "agro"),
+    ("Agroempresario", "agroempresario.com", "agro"),
+    ("Clarín Rural", "clarin.com", "agro"),
+    ("La Nación Campo", "lanacion.com.ar", "agro"),
+    ("Revista Chacra", "revistachacra.com.ar", "agro"),
+    ("Agrovoz", "lavoz.com.ar", "agro"),
+    ("Agencia Tierra Viva", "agenciatierraviva.com.ar", "agro"),
+    ("Infobae", "infobae.com", "economia"),
+    ("Ámbito", "ambito.com", "economia"),
+    ("El Cronista", "cronista.com", "economia"),
+    ("Noticias Argentinas", "noticiasargentinas.com", "noticias"),
+    ("La Nueva", "lanueva.com", "regional"),
+    ("La Brújula 24", "labrujula24.com", "regional"),
+    ("DataPortuaria", "dataportuaria.com", "logistica"),
+    ("Bolsa de Comercio de Rosario", "bcr.com.ar", "mercados"),
+    ("Bolsa de Cereales de Buenos Aires", "bolsadecereales.com", "agro"),
+    ("Secretaría de Agricultura, Ganadería y Pesca", "argentina.gob.ar", "oficial"),
+    ("Instituto Nacional de Tecnología Agropecuaria (INTA)", "inta.gob.ar", "oficial"),
+    ("Instituto Nacional de Estadística y Censos (INDEC)", "indec.gob.ar", "estadisticas"),
+    ("CIARA-CEC", "ciaracec.com.ar", "agro"),
+    ("Consorcio de Gestión del Puerto de Bahía Blanca", "puertobahiablanca.com", "logistica"),
+    # Logística y transporte marítimo
+    ("The Maritime Executive", "maritime-executive.com", "logistica"),
+    ("gCaptain", "gcaptain.com", "logistica"),
+    ("Splash", "splash247.com", "logistica"),
+    ("TradeWinds", "tradewindsnews.com", "logistica"),
+    ("Lloyd's List", "lloydslist.com", "logistica"),
+    ("Port Technology International", "porttechnology.org", "logistica"),
+]
+# Para los medios que publican de todo, la búsqueda por sitio se limita a estos temas
+KW_SITE = '(grain OR wheat OR corn OR soybeans OR "crude oil" OR "natural gas" OR fertilizer OR "Black Sea" OR "bulk carrier")'
+
+QUERIES_ES = """
+oferta y demanda mundial de granos
 balance mundial de trigo
 balance mundial de maíz
 balance mundial de soja
@@ -151,7 +362,7 @@ ampliaciones de capacidad de almacenamiento de granos
 obras ferroviarias vinculadas al transporte de cereales
 proyectos de inversión en infraestructura agroindustrial
 """.strip().splitlines()
- 
+
 QUERIES_EN = """
 global grain market outlook
 global grain supply and demand
@@ -317,10 +528,10 @@ Brazil Argentina grain export competition
 global grain trade flows from South America
 international demand for Argentine agricultural products
 """.strip().splitlines()
- 
+
 UMBRAL_ORIGINAL = 0.60    # se compara el título tal cual vino de Google News
 UMBRAL_TRADUCIDO = 0.50   # se compara de nuevo ya traducido
- 
+
 COL = dict(
     fondo="#f8faf5",
     panel="#ffffff",
@@ -343,7 +554,7 @@ GOOGLE_FONTS = "Libre+Franklin:wght@400;500;900"
 LOGO = "logo.png"         # logo (subilo al repo junto al script). "" = sin logo
 FONDO_IMAGEN = ""
 VELO_FONDO = "rgba(248,250,245,0.92)"
- 
+
 # %% 2. Búsqueda de noticias (Google News RSS)
 import re, json, urllib.parse, os, base64, mimetypes, unicodedata
 import feedparser
@@ -354,26 +565,26 @@ from deep_translator import GoogleTranslator
 import time
 from concurrent.futures import ThreadPoolExecutor
 ART = timezone(timedelta(hours=-3))   # hora de Argentina
- 
+
 _STOP = set("""de la el los las y en a un una unos unas que por con para del al se su sus es son lo le les
  the of and in to for on at as by from with is are an its it this that after amid over new more than
  un una ante sobre entre como mas más pero sin tras desde hasta hacia segun según""".split())
- 
- 
+
+
 def _singular(w):
     if len(w) > 4 and w.endswith("es"):
         return w[:-2]
     if len(w) > 3 and w.endswith("s"):
         return w[:-1]
     return w
- 
- 
+
+
 def tokens(titulo):
     t = re.sub(r"\s+[-–|]\s+[^-–|]{2,40}$", "", titulo)
     t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode().lower()
     return frozenset(_singular(w) for w in re.findall(r"[a-z0-9]+", t) if len(w) > 2 and w not in _STOP)
- 
- 
+
+
 def quitar_repetidas(df, col, umbral):
     if not len(df):
         return df
@@ -386,29 +597,29 @@ def quitar_repetidas(df, col, umbral):
         vistos.append(tk)
         keep.append(idx)
     return df.loc[keep]
- 
- 
+
+
 def _host(url):
     m = re.match(r"https?://([^/\s]+)", url or "")
     h = (m.group(1) if m else "").lower()
     return h[4:] if h.startswith("www.") else h
- 
- 
+
+
 _norm_nombre = lambda n: re.sub(r"[^a-z0-9]+", "", (n or "").lower())
 _POR_NOMBRE = {_norm_nombre(n): (n, c) for n, d, c in FUENTES}
- 
- 
+
+
 def fuente_valida(href, nombre):
     h = _host(href)
     for n, d, c in FUENTES:
         if h == d or h.endswith("." + d):
             return n, c
     return _POR_NOMBRE.get(_norm_nombre(nombre))
- 
- 
+
+
 def _trabajos():
     vistos, out = set(), []
- 
+
     def add(q, ed):
         if (q, ed) not in vistos:
             vistos.add((q, ed)); out.append((q, ed))
@@ -423,8 +634,8 @@ def _trabajos():
         ed = ED_PT if (d.endswith(".br") or "globo.com" in d) else ED_DE if d == "agrarheute.com" else ED_EN
         add(f"site:{d}" if c == "agro" else f"site:{d} {KW_SITE}", ed)
     return out
- 
- 
+
+
 def _pedir(trabajo):
     q, (hl, gl, ceid) = trabajo
     url = (f"https://news.google.com/rss/search?q={urllib.parse.quote(q)}+when:{DIAS}d"
@@ -438,8 +649,8 @@ def _pedir(trabajo):
             pass
         time.sleep(1)
     return []
- 
- 
+
+
 def buscar_noticias(dias):
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
     trabajos = _trabajos()
@@ -469,11 +680,11 @@ def buscar_noticias(dias):
     df = pd.DataFrame(filas).sort_values("fecha", ascending=False).drop_duplicates("link")
     df = quitar_repetidas(df, "titulo", UMBRAL_ORIGINAL)
     return df.sort_values("fecha", ascending=False).reset_index(drop=True)
- 
- 
+
+
 noticias = buscar_noticias(DIAS)
 print(f"{len(noticias)} noticias distintas encontradas")
- 
+
 # %% 3. Detección de países
 PAISES = {
     "Argentina": (-34.6, -64.0, ["argentina", "argentino", "argentinos", "argentinas", "rosario",
@@ -498,21 +709,21 @@ PAISES = {
     "Irán": (32.4, 53.7, ["irán", "iran", "iranian", "teherán", "tehran", "ormuz", "hormuz"]),
     "Israel": (31.0, 34.9, ["israel", "israeli", "israelí", "gaza", "hamás", "hamas", "tel aviv"]),
 }
- 
- 
+
+
 def _compilar(aliases, flags):
     if not aliases:
         return None
     return re.compile(r"(?<![\w$])(" + "|".join(re.escape(a) for a in aliases) + r")(?![\w$])", flags)
- 
- 
+
+
 patrones = {}
 for _p, (_, _, _al) in PAISES.items():
     _cs = [a[1:] for a in _al if a.startswith("=")]
     _ci = [a for a in _al if not a.startswith("=")]
     patrones[_p] = (_compilar(_ci, re.I), _compilar(_cs, 0))
- 
- 
+
+
 def detectar_pais(texto):
     mejor, pos = None, 10**9
     for p, rxs in patrones.items():
@@ -521,11 +732,11 @@ def detectar_pais(texto):
             if m and m.start() < pos:
                 mejor, pos = p, m.start()
     return mejor
- 
+
 # %% 3b. Detección de alertas
 _rx = lambda p: re.compile(p, re.I)
 _ini, _fin = r"(?<!\w)(?:", r")(?!\w)"
- 
+
 RX_ACTIVOS = {
     "Granos": _rx(_ini + r"soja|soya|trigo|ma[ií]z|cebada|girasol|aceite de palma|granos?|soybeans?|wheat|corn|barley|grains?|sunflower|palm oil|oilseeds?" + _fin),
     "Petróleo": _rx(_ini + r"petr[oó]leo|crudo|brent|wti|crude|barril(?:es)?|barrels?" + _fin
@@ -535,13 +746,13 @@ RX_ACTIVOS = {
 RX_SUBA = _rx(r"(?<!\w)(?:alz\w*|aument\w*|repunt\w*|sub[eií]\w*|suba|subas|rall?y|surge|surges|surging|soar\w*|jump\w*|rise|rises|rising|rose|climb\w*|gain\w*|higher|hike\w*)(?!\w)")
 RX_BAJA = _rx(r"(?<!\w)(?:baj[aóe]\w*|cae|caen|caer|ca[ií]d\w*|cay[oó]\w*|desplom\w*|retroced\w*|derrump\w*|falls?|fell|falling|drop\w*|plung\w*|slump\w*|declin\w*|lower|tumbl\w*|slid\w*|sink\w*|sank)(?!\w)")
 RX_CTX = _rx(_ini + r"grains?|granos?|cereal\w*|agr[ií]\w*|agro\w*|farm\w*|crops?|cultivos?|oilseeds?|oleaginos\w*|commodit\w*|fertiliz\w*|harina|molienda|crush\w*|silos?|food (?:security|prices?)|seguridad alimentaria|black sea|mar negro|red sea|mar rojo|hormuz|ormuz|shipping|vessels?|tankers?|bulk|freight|fletes?|oil|petr[oó]leo|crudo|crude|gas|energ\w*|lng|gnl|puertos?|ports?" + _fin)
- 
+
 RX_MIL = _rx(_ini + r"ataque\w*|atac[oó]\w*|atacan|bombarde\w*|misil\w*|dron(?:es)?|ofensiva|invasi[oó]n|attacks?|attacked|attacking|airstrikes?|air strikes?|missiles?|drones?|bombing|bombed|shelling|invasion|offensive" + _fin)
 RX_CONFLICTO = _rx(_ini + r"guerra|war|militar\w*|military|army|ej[eé]rcito|troops|tropas|armed forces|fuerzas armadas|ucrania|ukraine|ukrainian|rusia|russia|russian|israel|gaza|ir[aá]n|iran|hamas|hamás|hezbol\w*|hezbollah|houthis?|hut[ií]es?|yemen|mar rojo|red sea|mar negro|black sea|hormuz|ormuz|odesa|odessa|crimea|kherson|jers[oó]n|siria|syria|l[ií]bano|lebanon|cisjordania|west bank" + _fin)
 RX_NO_BELICO = _rx(_ini + r"f[uú]tbol|football|soccer|partido|match|nba|nfl|ciberataque\w*|cyber\w*|hackers?|ransomware|ataque card[ií]aco|heart attack|panic attack|ataque de p[aá]nico|tibur[oó]n|shark|polic[ií]a|police|robo|asalto|ataque de (?:asma|ansiedad)|asthma attack|anxiety attack" + _fin)
 RX_GUERRA_COMERCIAL = _rx(r"trade wars?|guerras? comercial\w*|price wars?|guerras? de precios|currency wars?|guerra cambiaria")
- 
- 
+
+
 def clasificar(titulo):
     out = []
     sube, baja = bool(RX_SUBA.search(titulo)), bool(RX_BAJA.search(titulo))
@@ -554,7 +765,7 @@ def clasificar(titulo):
     if RX_MIL.search(t) and RX_CONFLICTO.search(t) and RX_CTX.search(t) and not RX_NO_BELICO.search(t):
         out.append("Ataque bélico")
     return out
- 
+
 # %% 3c. Productos y temas para el filtro
 PRODUCTOS = {
     "trigo": ("Trigo", r"trigo|wheat"),
@@ -588,13 +799,13 @@ PRODUCTOS = {
 NUCLEO = {"trigo", "maiz", "soja", "cebada", "girasol", "sorgo", "arroz", "palma", "petroleo", "gas",
           "fertil", "futuros", "bio", "cosecha"}
 RX_PRODUCTOS = {k: _rx(_ini + v[1] + _fin) for k, v in PRODUCTOS.items()}
- 
- 
+
+
 def etiquetar(texto):
     texto = RX_GUERRA_COMERCIAL.sub(" ", texto)
     return [k for k, rx in RX_PRODUCTOS.items() if rx.search(texto)]
- 
- 
+
+
 def es_relevante(titulo, tipo):
     if tipo == "agro":
         return True
@@ -602,31 +813,31 @@ def es_relevante(titulo, tipo):
     if tags & NUCLEO:
         return True
     return bool(tags) and bool(RX_CTX.search(titulo))
- 
+
 # %% 4. Candidatas, traducción y segunda pasada contra repetidas
 _n0 = len(noticias)
 _ok = pd.Series([es_relevante(t, c) for t, c in zip(noticias["titulo"], noticias["cat"])],
                 index=noticias.index, dtype=bool)
 noticias = noticias[_ok].reset_index(drop=True)
 print(f"{_n0 - len(noticias)} noticias descartadas por no tratar de agro, energía o logística de granos")
- 
+
 noticias["pais"] = [detectar_pais(t) for t in noticias["titulo"]]
 noticias["alertas"] = [clasificar(t) for t in noticias["titulo"]]
 print(f"{noticias['pais'].notna().sum()} de {len(noticias)} noticias mencionan algún país del mapa")
- 
+
 _idx = set()
 for _p, _g in noticias[noticias["pais"].notna()].groupby("pais"):
     _idx |= set(_g.head(MAX_GUARDAR + 20).index)
 _idx |= set(noticias[noticias["alertas"].map(bool)].head(MAX_ALERTAS_GUARDAR + 30).index)
 cand = noticias.loc[sorted(_idx)].copy()
- 
+
 # ---------- TRADUCCIÓN DE CUALQUIER IDIOMA A ESPAÑOL ----------
 from langdetect import detect, DetectorFactory
 DetectorFactory.seed = 0
 errores_trad = []
 _MAP_IDIOMA = {"zh-cn": "zh-CN", "zh-tw": "zh-TW"}
- 
- 
+
+
 def idioma(titulo):
     """Idioma del título (sin la fuente del final). 'auto' si no se puede detectar."""
     t = re.sub(r"\s+[-–|]\s+[^-–|]{2,40}$", "", titulo)
@@ -635,15 +846,15 @@ def idioma(titulo):
         return _MAP_IDIOMA.get(cod, cod)
     except Exception:
         return "auto"
- 
- 
+
+
 def _traducir_uno(t, origen):
     try:
         return GoogleTranslator(source=origen, target="es").translate(t) or t
     except Exception:
         return GoogleTranslator(source="auto", target="es").translate(t) or t
- 
- 
+
+
 def traducir_lote(textos, origen):
     """Traduce varios títulos del MISMO idioma en una sola consulta."""
     for intento in range(3):
@@ -665,14 +876,14 @@ def traducir_lote(textos, origen):
             errores_trad.append(repr(e)[:200]); out.append(t)
             time.sleep(1)
     return out
- 
- 
+
+
 originales = list(dict.fromkeys(cand["titulo"]))
 por_idioma = {}
 for t in originales:
     por_idioma.setdefault(idioma(t), []).append(t)
 print("Idiomas detectados:", {k: len(v) for k, v in sorted(por_idioma.items(), key=lambda x: -len(x[1]))})
- 
+
 traducciones = {}
 for lang, titulos in por_idioma.items():
     if lang == "es":
@@ -690,7 +901,7 @@ for lang, titulos in por_idioma.items():
         for t_orig, t_es in zip(g, traducir_lote(g, lang)):
             traducciones[t_orig] = t_es
         time.sleep(0.5)
- 
+
 # Reintento de los que no están en español y quedaron iguales al original
 pendientes = [t for t in originales
               if idioma(t) != "es" and traducciones.get(t, t).strip() == t.strip()]
@@ -700,18 +911,18 @@ for t in pendientes[:60]:
     except Exception as e:
         errores_trad.append(repr(e)[:200])
     time.sleep(0.5)
- 
+
 cand["es"] = [traducciones.get(t, t) for t in cand["titulo"]]
 print(f"{len(originales)} títulos · {sum(1 for t in originales if traducciones.get(t, t).strip() != t.strip())} traducidos")
 if errores_trad:
     print(f"Aviso: {len(errores_trad)} errores de traducción. Primero: {errores_trad[0]}")
 # ---------- FIN TRADUCCIÓN ----------
- 
+
 _antes = len(cand)
 cand = quitar_repetidas(cand, "es", UMBRAL_TRADUCIDO)
 print(f"{_antes - len(cand)} repetidas más descartadas tras traducir")
- 
- 
+
+
 def _item(r):
     return {
         "t": r["es"],
@@ -722,24 +933,24 @@ def _item(r):
         "a": r["alertas"],
         "p": etiquetar(r["titulo"] + " " + r["es"]),
     }
- 
- 
+
+
 conteo = {}
 for _, r in cand[cand["pais"].notna()].iterrows():
     lista = conteo.setdefault(r["pais"], [])
     if len(lista) < MAX_GUARDAR:
         lista.append(_item(r))
- 
+
 alertas_lista = [_item(r) for _, r in cand[cand["alertas"].map(bool)].head(MAX_ALERTAS_GUARDAR).iterrows()]
 print(f"{len(alertas_lista)} alertas")
- 
+
 paises_ord = sorted(conteo, key=lambda p: len(conteo[p]), reverse=True)
 vis = {p: conteo[p][:MAX_POR_PAIS] for p in paises_ord}
 total_mostradas = sum(len(v) for v in vis.values())
- 
+
 # %% 5. Mapa
 import plotly.graph_objects as go
- 
+
 lats = [PAISES[p][0] for p in paises_ord]
 lons = [PAISES[p][1] for p in paises_ord]
 cant = [len(vis[p]) for p in paises_ord]
@@ -751,15 +962,15 @@ hover = [f"<b>{p}</b> · {n} noticias"
          + (f" · <span style='color:{COL['alerta']}'>{k} alerta{'s' if k > 1 else ''}</span>" if k else "")
          + "<br><i>Clic para fijar las noticias en el panel</i>"
          for p, n, k in zip(paises_ord, cant, n_alert)]
- 
+
 fig = go.Figure()
- 
+
 for escala, op in [(2.4, 0.10), (1.6, 0.20)]:
     fig.add_trace(go.Scattergeo(
         lat=lats, lon=lons, mode="markers", hoverinfo="skip", showlegend=False,
         marker=dict(size=[t * escala for t in tams], color=colores, opacity=op, line=dict(width=0)),
     ))
- 
+
 fig.add_trace(go.Scattergeo(
     lat=lats, lon=lons, mode="markers+text", showlegend=False,
     customdata=paises_ord,
@@ -769,7 +980,7 @@ fig.add_trace(go.Scattergeo(
     hoverlabel=dict(bgcolor="#ffffff", bordercolor=COL["marcador"], font=dict(color=COL["texto"], size=12, family=FUENTE)),
     marker=dict(size=tams, color=colores, opacity=0.95, line=dict(width=2, color=bordes)),
 ))
- 
+
 fig.update_geos(
     projection_type="natural earth",
     showland=True, landcolor=COL["tierra"],
@@ -782,7 +993,7 @@ fig.update_layout(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(family=FUENTE),
     margin=dict(l=10, r=10, t=10, b=10),
 )
- 
+
 POST_SCRIPT = """
 var gd = document.getElementById('{plot_id}');
 var DATA = __DATA__;
@@ -794,7 +1005,7 @@ var hint = document.getElementById('hint');
 var fijado = null;
 var actual = null;
 var TOUCH = window.matchMedia('(hover: none)').matches;
- 
+
 function crearItem(n) {
   var li = document.createElement('li');
   if (n.a && n.a.length) li.className = 'alerta';
@@ -937,15 +1148,15 @@ post_script = (POST_SCRIPT
                .replace("__TAGS__", _js([[k, v[0]] for k, v in PRODUCTOS.items()]))
                .replace("__MAXP__", str(MAX_POR_PAIS)).replace("__MAXA__", str(MAX_ALERTAS))
                .replace("__COL_AL__", COL["alerta"]).replace("__COL_OK__", COL["marcador"]))
- 
+
 plot_html = fig.to_html(
     full_html=False, include_plotlyjs="cdn", div_id="mapa",
     default_height="100%", default_width="100%",
     config={"responsive": True, "displaylogo": False},
     post_script=post_script,
 )
- 
- 
+
+
 def src_imagen(ruta):
     if not ruta:
         return ""
@@ -957,8 +1168,8 @@ def src_imagen(ruta):
             return f"data:{mime};base64," + base64.b64encode(fh.read()).decode()
     print(f"Aviso: no encontré la imagen '{ruta}', se omite.")
     return ""
- 
- 
+
+
 logo_src, fondo_src = src_imagen(LOGO), src_imagen(FONDO_IMAGEN)
 css_root = ":root{" + ";".join(f"--{k}:{v}" for k, v in COL.items()) + f";--fuente:{FUENTE};--fuente-t:{FUENTE_T}" + "}"
 css_fondo = (f"background-image:linear-gradient({VELO_FONDO},{VELO_FONDO}),url('{fondo_src}');"
@@ -969,7 +1180,7 @@ cab_html = ('<div id="cab">'
             + (f'<img src="{logo_src}" alt="Bolsa de Cereales y Productos de Bahía Blanca"><div class="sep"></div>' if logo_src else "")
             + '<div><h1>Noticias del mercado de granos</h1>'
             + f'<p><span id="n-total">{total_mostradas}</span> noticias &nbsp;·&nbsp; últimos {DIAS} días &nbsp;·&nbsp; actualizado {ahora}</p></div></div>')
- 
+
 PAGINA = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1051,7 +1262,7 @@ PAGINA = """<!DOCTYPE html>
 </body>
 </html>
 """
- 
+
 html_final = (PAGINA.replace("__ROOT__", css_root)
                     .replace("__GFONTS__", GOOGLE_FONTS)
                     .replace("__FONDO__", css_fondo)
@@ -1060,4 +1271,3 @@ html_final = (PAGINA.replace("__ROOT__", css_root)
 with open(ARCHIVO_SALIDA, "w", encoding="utf-8") as f:
     f.write(html_final)
 print(f"Listo: se generó {ARCHIVO_SALIDA}")
- 
