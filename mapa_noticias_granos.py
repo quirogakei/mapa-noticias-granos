@@ -834,9 +834,37 @@ cand = noticias.loc[sorted(_idx)].copy()
 # ---------- TRADUCCIÓN DE CUALQUIER IDIOMA A ESPAÑOL ----------
 from langdetect import detect, DetectorFactory
 DetectorFactory.seed = 0
+import deepl
+
 errores_trad = []
-traduccion_bloqueada = False   # se pone en True al primer "TooManyRequests"
+traduccion_bloqueada = False   # True si DeepL rechaza (cuota agotada, clave mala, etc.)
 _MAP_IDIOMA = {"zh-cn": "zh-CN", "zh-tw": "zh-TW"}
+
+DEEPL_KEY = os.environ.get("DEEPL_API_KEY", "").strip()
+_traductor = deepl.Translator(DEEPL_KEY) if DEEPL_KEY else None
+if _traductor is None:
+    print("Aviso: no hay DEEPL_API_KEY; se muestran los títulos sin traducir.")
+
+# Caché: cada título se traduce una sola vez y se reutiliza en las corridas siguientes
+CACHE_TRAD = "cache_traducciones.json"
+MAX_CACHE = 6000
+try:
+    with open(CACHE_TRAD, encoding="utf-8") as fh:
+        _cache = json.load(fh)
+except Exception:
+    _cache = {}
+print(f"Caché de traducciones: {len(_cache)} títulos")
+
+
+def _guardar_cache():
+    global _cache
+    if len(_cache) > MAX_CACHE:                      # descarta los más viejos
+        _cache = dict(list(_cache.items())[-MAX_CACHE:])
+    try:
+        with open(CACHE_TRAD, "w", encoding="utf-8") as fh:
+            json.dump(_cache, fh, ensure_ascii=False)
+    except Exception as e:
+        errores_trad.append(repr(e)[:200])
 
 
 def idioma(titulo):
@@ -849,102 +877,36 @@ def idioma(titulo):
         return "auto"
 
 
-def _es_bloqueo(e):
-    s = repr(e)
-    return "TooManyRequests" in s or "429" in s
+def traducir_lote(textos, origen):
+    """Traduce una lista de títulos con DeepL (detecta el idioma solo).
+    Usa la caché; si DeepL falla o no hay clave, devuelve los originales."""
+    global traduccion_bloqueada
+    salida, nuevos = {}, []
+    for t in textos:
+        if t in _cache:
+            salida[t] = _cache[t]
+        else:
+            nuevos.append(t)
+    if nuevos and _traductor is not None and not traduccion_bloqueada:
+        try:
+            res = _traductor.translate_text(nuevos, target_lang="ES")
+            for t, r in zip(nuevos, res):
+                salida[t] = r.text
+                _cache[t] = r.text
+            _guardar_cache()
+        except (deepl.QuotaExceededException, deepl.AuthorizationException,
+                deepl.TooManyRequestsException) as e:
+            traduccion_bloqueada = True
+            errores_trad.append(repr(e)[:200])
+            print(f"Aviso: DeepL rechazó el pedido ({type(e).__name__}); "
+                  "se muestran los títulos originales.")
+        except Exception as e:
+            errores_trad.append(repr(e)[:200])
+    return [salida.get(t, t) for t in textos]
 
 
 def _traducir_uno(t, origen):
-    """Traduce un título. Si Google nos bloqueó, devuelve el original sin insistir."""
-    global traduccion_bloqueada
-    if traduccion_bloqueada:
-        return t
-    try:
-        return GoogleTranslator(source=origen, target="es").translate(t) or t
-    except Exception as e:
-        if _es_bloqueo(e):
-            traduccion_bloqueada = True
-            errores_trad.append(repr(e)[:200])
-            return t
-        try:
-            return GoogleTranslator(source="auto", target="es").translate(t) or t
-        except Exception as e2:
-            errores_trad.append(repr(e2)[:200])
-            if _es_bloqueo(e2):
-                traduccion_bloqueada = True
-            return t
-
-
-def traducir_lote(textos, origen):
-    """Traduce varios títulos del MISMO idioma en una sola consulta.
-    Si Google bloquea (TooManyRequests), corta enseguida y devuelve los originales."""
-    global traduccion_bloqueada
-    if traduccion_bloqueada:
-        return list(textos)
-    for intento in range(3):
-        try:
-            res = GoogleTranslator(source=origen, target="es").translate("\n".join(textos))
-            partes = (res or "").split("\n")
-            if len(partes) == len(textos):
-                return partes
-            break
-        except Exception as e:
-            errores_trad.append(repr(e)[:200])
-            if _es_bloqueo(e):
-                traduccion_bloqueada = True
-                print("Aviso: Google Translate bloqueó las consultas; "
-                      "se muestran los títulos originales sin traducir.")
-                return list(textos)
-            origen = "auto"
-            time.sleep(2 * (intento + 1))
-    out = []
-    for t in textos:
-        out.append(_traducir_uno(t, origen))
-        if traduccion_bloqueada:
-            out.extend(textos[len(out):])
-            break
-        time.sleep(1)
-    return out
-
-
-originales = list(dict.fromkeys(cand["titulo"]))
-por_idioma = {}
-for t in originales:
-    por_idioma.setdefault(idioma(t), []).append(t)
-print("Idiomas detectados:", {k: len(v) for k, v in sorted(por_idioma.items(), key=lambda x: -len(x[1]))})
-
-traducciones = {}
-for lang, titulos in por_idioma.items():
-    if lang == "es":
-        for t in titulos:
-            traducciones[t] = t
-        continue
-    grupo, largo, grupos = [], 0, []
-    for t in titulos:
-        if grupo and (largo + len(t) > 3800 or len(grupo) >= 40):
-            grupos.append(grupo); grupo, largo = [], 0
-        grupo.append(t); largo += len(t) + 1
-    if grupo:
-        grupos.append(grupo)
-    for g in grupos:
-        for t_orig, t_es in zip(g, traducir_lote(g, lang)):
-            traducciones[t_orig] = t_es
-        time.sleep(0.5)
-
-# Reintento de los que no están en español y quedaron iguales al original
-pendientes = [t for t in originales
-              if idioma(t) != "es" and traducciones.get(t, t).strip() == t.strip()]
-for t in pendientes[:60]:
-    try:
-        traducciones[t] = _traducir_uno(t, "auto")
-    except Exception as e:
-        errores_trad.append(repr(e)[:200])
-    time.sleep(0.5)
-
-cand["es"] = [traducciones.get(t, t) for t in cand["titulo"]]
-print(f"{len(originales)} títulos · {sum(1 for t in originales if traducciones.get(t, t).strip() != t.strip())} traducidos")
-if errores_trad:
-    print(f"Aviso: {len(errores_trad)} errores de traducción. Primero: {errores_trad[0]}")
+    return traducir_lote([t], origen)[0]
 # ---------- FIN TRADUCCIÓN ----------
 
 _antes = len(cand)
