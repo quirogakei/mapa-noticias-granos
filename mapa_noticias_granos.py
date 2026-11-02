@@ -561,7 +561,6 @@ import feedparser
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from time import mktime
-from deep_translator import GoogleTranslator
 import time
 from concurrent.futures import ThreadPoolExecutor
 ART = timezone(timedelta(hours=-3))   # hora de Argentina
