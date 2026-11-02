@@ -9,7 +9,7 @@ Mapa de noticias del mercado de granos
 - Traduce los títulos de CUALQUIER idioma al español (detecta el idioma de cada título).
 - Genera un archivo index.html listo para publicar en GitHub Pages.
 
-Requiere: pip install feedparser plotly pandas deep-translator langdetect
+Requiere: pip install feedparser plotly pandas deepl langdetect
 """
 
 # %% 1. Configuración
@@ -830,7 +830,7 @@ for _p, _g in noticias[noticias["pais"].notna()].groupby("pais"):
 _idx |= set(noticias[noticias["alertas"].map(bool)].head(MAX_ALERTAS_GUARDAR + 30).index)
 cand = noticias.loc[sorted(_idx)].copy()
 
-# ---------- TRADUCCIÓN DE CUALQUIER IDIOMA A ESPAÑOL ----------
+# ---------- TRADUCCIÓN DE CUALQUIER IDIOMA A ESPAÑOL (DeepL + caché) ----------
 from langdetect import detect, DetectorFactory
 DetectorFactory.seed = 0
 import deepl
@@ -906,6 +906,29 @@ def traducir_lote(textos, origen):
 
 def _traducir_uno(t, origen):
     return traducir_lote([t], origen)[0]
+
+
+originales = list(dict.fromkeys(cand["titulo"]))
+por_idioma = {}
+for t in originales:
+    por_idioma.setdefault(idioma(t), []).append(t)
+print("Idiomas detectados:", {k: len(v) for k, v in sorted(por_idioma.items(), key=lambda x: -len(x[1]))})
+
+traducciones = {}
+for lang, titulos in por_idioma.items():
+    if lang == "es":
+        for t in titulos:
+            traducciones[t] = t
+        continue
+    for i in range(0, len(titulos), 40):          # lotes de 40 títulos
+        g = titulos[i:i + 40]
+        for t_orig, t_es in zip(g, traducir_lote(g, lang)):
+            traducciones[t_orig] = t_es
+
+cand["es"] = [traducciones.get(t, t) for t in cand["titulo"]]
+print(f"{len(originales)} títulos · {sum(1 for t in originales if traducciones.get(t, t).strip() != t.strip())} traducidos")
+if errores_trad:
+    print(f"Aviso: {len(errores_trad)} errores de traducción. Primero: {errores_trad[0]}")
 # ---------- FIN TRADUCCIÓN ----------
 
 _antes = len(cand)
