@@ -2,7 +2,7 @@ name: Actualizar mapa
 
 on:
   schedule:
-    - cron: "*/20 * * * *"    # respaldo; el disparo puntual lo hace cron-job.org
+    - cron: "*/15 * * * *"    # respaldo; el disparo puntual lo hace cron-job.org
   workflow_dispatch:
 
 permissions:
@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
@@ -37,7 +37,7 @@ jobs:
           path: cache_traducciones.json
           key: traducciones-${{ github.run_id }}
           restore-keys: traducciones-
-        
+
       - name: Generar el mapa
         env:
           DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
