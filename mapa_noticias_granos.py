@@ -23,7 +23,7 @@ QUERIES_BASE = [
     "Sunflower oil", "Sunflower pellets", "Sunflower prices", "milling", "soybean meal",
     "aceite de palma", "palma", "palm oil", "tariffs",
     "precio petróleo", "oil prices", "gas natural", "natural gas prices",
-    "sorgo", "sorghum", "arroz", "rice prices",
+    "sorgo", "sorghum", "arroz", "rice prices","elecciones presidenciales", "Cotización del dólar", "Cotización del Yuan", "biofuels"
 ]
 DIAS = 2                  # noticias de los últimos N días
 MAX_POR_PAIS = 30         # máximo de noticias que se MUESTRAN por país
