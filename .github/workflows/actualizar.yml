@@ -2,7 +2,7 @@ name: Actualizar mapa
 
 on:
   schedule:
-    - cron: "*/15 * * * *"    # respaldo; el disparo puntual lo hace cron-job.org
+    - cron: "*/20 * * * *"    # respaldo; el disparo puntual lo hace cron-job.org
   workflow_dispatch:
 
 permissions:
