@@ -1,31 +1,48 @@
 name: Actualizar mapa
+
 on:
   schedule:
-    - cron: "*/8 * * * *"
+    - cron: "*/15 * * * *"    # respaldo; el disparo puntual lo hace cron-job.org
   workflow_dispatch:
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install feedparser plotly pandas deep-translator
-      - run: python mapa_noticias_granos.py
-      - run: mkdir site && mv index.html site/
+
+      - name: Instalar dependencias
+        run: pip install feedparser plotly pandas deep-translator langdetect
+
+      - name: Generar el mapa
+        run: python mapa_noticias_granos.py
+
+      - name: Preparar carpeta del sitio
+        run: |
+          mkdir site
+          mv index.html site/
+          if [ -f logo.png ]; then cp logo.png site/; fi
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+
       - id: deployment
         uses: actions/deploy-pages@v4
