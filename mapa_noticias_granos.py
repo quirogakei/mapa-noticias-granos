@@ -972,7 +972,7 @@ colores = [COL["alerta"] if k else COL["marcador"] for k in n_alert]
 bordes = ["#ffffff"] * len(n_alert)
 tams = [min(12 + 2 * n, 50) for n in cant]
 hover = [f"<b>{p}</b> · {n} noticias"
-         + (f" · <span style='color:{COL['alerta']}'>{k} alerta{'s' if k > 1 else ''}</span>" if k else "")
+         + (f" · <span style='color:{COL['alerta']}'>{k} Alertas de Precios</span>" if k else "")
          + "<br><i>Clic para fijar las noticias en el panel</i>"
          for p, n, k in zip(paises_ord, cant, n_alert)]
 
@@ -1074,7 +1074,7 @@ function aplicarFiltro() {
     cols.push(k ? COL_AL : COL_OK);
     txt.push(n ? p : '');
     hov.push(n ? '<b>' + p + '</b> · ' + n + ' noticias'
-      + (k ? " · <span style='color:" + COL_AL + "'>" + k + ' alerta' + (k > 1 ? 's' : '') + '</span>' : '')
+      + (k ? " · <span style='color:" + COL_AL + "'>" + k + ' Alertas de Precios</span>' : '')
       + '<br><i>Clic para fijar las noticias en el panel</i>' : '');
   });
   var glow = function (f) { return sizes.map(function (x) { return x * f; }); };
@@ -1114,8 +1114,8 @@ function actualizarHint() {
   hint.textContent = fijado
     ? (TOUCH ? 'Mostrando las noticias de ' + fijado + '. Tocá otro círculo para cambiar.'
              : 'Fijado: ' + fijado + '. Clic en el mismo círculo para soltar, o en otro para cambiar.')
-    : (TOUCH ? 'Tocá un círculo del mapa para ver sus noticias. Rojo = tiene alertas.'
-             : 'Pasá el mouse sobre un círculo para ver sus noticias. Clic para fijarlas. Rojo = tiene alertas.');
+    : (TOUCH ? 'Tocá un círculo del mapa para ver sus noticias. Rojo = tiene alertas de precios.'
+             : 'Pasá el mouse sobre un círculo para ver sus noticias. Clic para fijarlas. Rojo = tiene alertas de precios.');
 }
 gd.on('plotly_hover', function (e) {
   var p = e.points[0];
