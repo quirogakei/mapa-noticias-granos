@@ -208,7 +208,40 @@ FUENTES = [
 ]
 # Para los medios que publican de todo, la búsqueda por sitio se limita a estos temas (en inglés y español)
 KW_SITE = ('(grain OR wheat OR corn OR soybeans OR "crude oil" OR "natural gas" OR fertilizer OR "Black Sea" OR "bulk carrier"'
-           ' OR soja OR trigo OR maíz OR cebada OR granos OR petróleo OR "gas natural" OR fertilizantes OR retenciones OR exportaciones)')
+           ' OR soja OR trigo OR maíz OR cebada OR granos OR petróleo OR "gas natural" OR fertilizantes OR retenciones OR exportaciones'
+           ' OR war OR guerra OR Ukraine OR Ucrania OR Russia OR Rusia OR Iran OR Irán OR Israel OR Gaza OR Hormuz)')
+
+# Búsquedas dedicadas a los grandes conflictos bélicos (se buscan en español e inglés)
+QUERIES_GUERRA = """
+Russia Ukraine war
+Ukraine war latest
+Russian attack Ukraine
+Ukraine peace talks
+Ukraine ceasefire
+Black Sea attack
+Iran Israel war
+Israel Iran United States war
+Iran United States strikes
+Israel attack Iran
+Iran attack Israel
+Strait of Hormuz
+Gaza war
+Gaza ceasefire
+Hezbollah Israel
+Houthi Red Sea attack
+Middle East war oil
+guerra Rusia Ucrania
+guerra Irán Israel
+guerra Irán Israel Estados Unidos
+ataque Israel Irán
+ataque Estados Unidos Irán
+guerra en Gaza
+alto el fuego Gaza
+conflicto Medio Oriente petróleo
+estrecho de Ormuz
+ataque con misiles Ucrania
+ataque con drones Rusia
+""".strip().splitlines()
 
 QUERIES_ES = """
 oferta y demanda mundial de granos
@@ -631,6 +664,9 @@ def _trabajos():
         add(q, ED_ES)
     for q in QUERIES_EN:
         add(q, ED_EN)
+    for q in QUERIES_GUERRA:
+        add(q, ED_ES)
+        add(q, ED_EN)
     for n, d, c in FUENTES:
         ed = ED_PT if (d.endswith(".br") or "globo.com" in d) else ED_DE if d == "agrarheute.com" else ED_EN
         add(f"site:{d}" if c == "agro" else f"site:{d} {KW_SITE}", ed)
@@ -746,11 +782,6 @@ RX_ACTIVOS = {
 }
 RX_SUBA = _rx(r"(?<!\w)(?:alz\w*|aument\w*|repunt\w*|sub[eií]\w*|suba|subas|rall?y|surge|surges|surging|soar\w*|jump\w*|rise|rises|rising|rose|climb\w*|gain\w*|higher|hike\w*)(?!\w)")
 RX_BAJA = _rx(r"(?<!\w)(?:baj[aóe]\w*|cae|caen|caer|ca[ií]d\w*|cay[oó]\w*|desplom\w*|retroced\w*|derrump\w*|falls?|fell|falling|drop\w*|plung\w*|slump\w*|declin\w*|lower|tumbl\w*|slid\w*|sink\w*|sank)(?!\w)")
-RX_CONTEXTO_PRECIO = _rx(
-    r"precio|precios|price|prices|pricing|cotizaci[oó]n|cotizaciones|"
-    r"quotation|quotations|futuros|futures|cbot|matba|euronext|"
-    r"mercado de futuros|market price|cash price|precio fob|precio fas"
-)
 RX_CTX = _rx(_ini + r"grains?|granos?|cereal\w*|agr[ií]\w*|agro\w*|farm\w*|crops?|cultivos?|oilseeds?|oleaginos\w*|commodit\w*|fertiliz\w*|harina|molienda|crush\w*|silos?|food (?:security|prices?)|seguridad alimentaria|black sea|mar negro|red sea|mar rojo|hormuz|ormuz|shipping|vessels?|tankers?|bulk|freight|fletes?|oil|petr[oó]leo|crudo|crude|gas|energ\w*|lng|gnl|puertos?|ports?" + _fin)
 
 RX_MIL = _rx(_ini + r"ataque\w*|atac[oó]\w*|atacan|bombarde\w*|misil\w*|dron(?:es)?|ofensiva|invasi[oó]n|attacks?|attacked|attacking|airstrikes?|air strikes?|missiles?|drones?|bombing|bombed|shelling|invasion|offensive" + _fin)
@@ -762,13 +793,13 @@ RX_GUERRA_COMERCIAL = _rx(r"trade wars?|guerras? comercial\w*|price wars?|guerra
 def clasificar(titulo):
     out = []
     sube, baja = bool(RX_SUBA.search(titulo)), bool(RX_BAJA.search(titulo))
-   if (sube or baja) and RX_CONTEXTO_PRECIO.search(titulo):
+    if sube or baja:
         flecha = "▲" if (sube and not baja) else "▼" if (baja and not sube) else "▲▼"
         for nombre, rx in RX_ACTIVOS.items():
             if rx.search(titulo):
                 out.append(f"{nombre} {flecha}")
     t = RX_GUERRA_COMERCIAL.sub(" ", titulo)
-    if RX_MIL.search(t) and RX_CONFLICTO.search(t) and RX_CTX.search(t) and not RX_NO_BELICO.search(t):
+    if RX_MIL.search(t) and RX_CONFLICTO.search(t) and not RX_NO_BELICO.search(t):
         out.append("Ataque bélico")
     return out
 
@@ -843,11 +874,33 @@ FUENTES_ECO = {"economia", "mercados", "comercio exterior", "politica comercial"
                "logistica", "estadisticas", "oficial"}
 
 
+# Grandes conflictos bélicos: Rusia-Ucrania, Irán-Israel-EE.UU., Gaza, Líbano, Yemen, Mar Rojo, Ormuz...
+RX_GUERRA_ACTORES = _rx(_ini + (
+    r"ucrania|ukraine|ukrainian|ucraniano\w*|rusia|russia|russian|ruso\w*|kremlin|putin|zelensky|zelenski|"
+    r"kiev|kyiv|odesa|odessa|crimea|donbas|donbass|"
+    r"israel|israeli|israel[ií]\w*|gaza|hamas|ham[aá]s|hezbol\w*|hezbollah|l[ií]bano|lebanon|"
+    r"ir[aá]n|iranian|iran[ií]\w*|teher[aá]n|tehran|hut[ií]es?|houthis?|yemen|"
+    r"hormuz|ormuz|red sea|mar rojo|black sea|mar negro|siria|syria|otan|nato|"
+    r"pent[aá]gono|pentagon") + _fin)
+RX_GUERRA_ACCION = _rx(_ini + (
+    r"guerra|war|conflict\w*|ataque\w*|atac[oó]\w*|attack\w*|strikes?|struck|airstrikes?|bombard\w*|bombing|bombed|"
+    r"misil\w*|missiles?|dron(?:es)?|drones?|invasi[oó]n|invasion|ofensiva|offensive|alto el fuego|ceasefire|"
+    r"tregua|truce|negociaciones de paz|peace (?:talks|deal|plan)|escalada|escalat\w*|militar\w*|military|"
+    r"tropas|troops|nuclear\w*|sanciones|sanctions|hostilidades|hostilities|blockade|bloqueo") + _fin)
+
+
+def es_guerra_importante(texto):
+    return bool(RX_GUERRA_ACTORES.search(texto) and RX_GUERRA_ACCION.search(texto)
+                and not RX_NO_BELICO.search(texto))
+
+
 def es_relevante(texto, tipo):
     """True solo si la noticia trata de agro, energía, logística, mercados/economía
-    vinculada a las queries, o conflictos bélicos con impacto en el mercado."""
+    vinculada a las queries, o de un gran conflicto bélico."""
     if RX_EXCL_DURO.search(texto):
         return False
+    if es_guerra_importante(texto):        # antes del filtro de policiales: "crímenes de guerra", etc.
+        return True
     tags = set(etiquetar(texto))
     nucleo = bool(tags & NUCLEO)
     if RX_EXCL_SUAVE.search(texto) and not nucleo:
