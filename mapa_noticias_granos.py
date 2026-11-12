@@ -3,7 +3,8 @@
 Mapa de noticias del mercado de granos
 
 - Busca noticias en Google News (RSS) y se queda solo con las de los medios de la lista FUENTES.
-- Descarta las que no tratan de agro, energía o logística de granos, y detecta el país principal.
+- Descarta las que no tratan de agro, energía, logística de granos, economía de mercados
+  o conflictos bélicos con impacto en el mercado (nada de fútbol, música, Malvinas, policiales menores, etc.).
 - Sin noticias repetidas (también entre idiomas).
 - Filtros por producto o tema.
 - Traduce los títulos de CUALQUIER idioma al español (detecta el idioma de cada título).
@@ -19,11 +20,11 @@ QUERIES_BASE = [
     "malting", "grain taxes", "exportaciones soja", "cosecha gruesa", "aranceles granos",
     "cebada", "barley", "beer market", "biocombustibles", "grain prices", "grain",
     "harvest", "cosecha", "siembra", "Agriculture", "Breweries", "Beer Industry",
-    "Agriculture sector", "crop", "Sunflower seed",
+    "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "Sunflower seed",
     "Sunflower oil", "Sunflower pellets", "Sunflower prices", "milling", "soybean meal",
-    "aceite de palma", "palma", "palm oil", "tariffs grain",
+    "aceite de palma", "palma", "palm oil", "tariffs",
     "precio petróleo", "oil prices", "gas natural", "natural gas prices",
-    "sorgo", "sorghum", "arroz", "rice prices", "Cotización del dólar", "Cotización del Yuan", "biofuels"
+    "sorgo", "sorghum", "arroz", "rice prices","elecciones presidenciales", "Cotización del dólar", "Cotización del Yuan", "biofuels"
 ]
 DIAS = 2                  # noticias de los últimos N días
 MAX_POR_PAIS = 30         # máximo de noticias que se MUESTRAN por país
@@ -178,10 +179,10 @@ FUENTES = [
     ("Ruralnet", "ruralnet.com.ar", "agro"),
     ("Agritotal", "agritotal.com", "agro"),
     ("Agroempresario", "agroempresario.com", "agro"),
-    ("Clarín Rural", "clarin.com", "general"),
-    ("La Nación Campo", "lanacion.com.ar", "general"),
+    ("Clarín Rural", "clarin.com", "economia"),             # generalista: se busca con palabras clave y filtro estricto
+    ("La Nación Campo", "lanacion.com.ar", "economia"),     # generalista
     ("Revista Chacra", "revistachacra.com.ar", "agro"),
-    ("Agrovoz", "lavoz.com.ar", "general"),
+    ("Agrovoz", "lavoz.com.ar", "economia"),                # generalista
     ("Agencia Tierra Viva", "agenciatierraviva.com.ar", "agro"),
     ("Infobae", "infobae.com", "economia"),
     ("Ámbito", "ambito.com", "economia"),
@@ -205,9 +206,9 @@ FUENTES = [
     ("Lloyd's List", "lloydslist.com", "logistica"),
     ("Port Technology International", "porttechnology.org", "logistica"),
 ]
-# Para los medios que NO son "agro", la búsqueda por sitio se limita a estos temas (inglés y español)
+# Para los medios que publican de todo, la búsqueda por sitio se limita a estos temas (en inglés y español)
 KW_SITE = ('(grain OR wheat OR corn OR soybeans OR "crude oil" OR "natural gas" OR fertilizer OR "Black Sea" OR "bulk carrier"'
-           ' OR soja OR trigo OR maíz OR cebada OR granos OR retenciones OR exportaciones OR petróleo OR biocombustibles OR "tipo de cambio")')
+           ' OR soja OR trigo OR maíz OR cebada OR granos OR petróleo OR "gas natural" OR fertilizantes OR retenciones OR exportaciones)')
 
 QUERIES_ES = """
 oferta y demanda mundial de granos
@@ -779,7 +780,6 @@ PRODUCTOS = {
     "petroleo": ("Petróleo", r"petr[oó]leo|crudo|brent|wti|crude|barril(?:es)?|barrels?"
                              r"|(?<!sunflower )(?<!palm )(?<!soybean )(?<!vegetable )(?<!olive )oil prices?"),
     "gas": ("Gas natural", r"gas natural|natural gas|gnl|lng"),
-    "cambio": ("Tipo de cambio", r"tipo de cambio|d[oó]lar (?:oficial|mayorista|blue|futuro)|cotizaci[oó]n del d[oó]lar|cotizaci[oó]n del yuan|yuan|devaluaci[oó]n|brecha cambiaria|exchange rates?|dollar index"),
     "fertil": ("Fertilizantes", r"fertilizantes?|fertilizers?|urea|potasa|potash|fosfatad\w*|phosphates?|nitrogenad\w*"),
     "futuros": ("Futuros y commodities", r"cbot|matba|euronext|chicago board|(?:grain|wheat|corn|soybean|agricultural|crop|oilseed) futures"
                                           r"|futuros (?:de )?(?:granos|trigo|ma[ií]z|soja|agr[ií]colas)|agricultural commodit\w+|commodities agr\w+|crush margins?|m[aá]rgenes? de molienda"),
@@ -798,7 +798,7 @@ PRODUCTOS = {
                                       r"|bombard\w*|airstrikes?|air strikes?|ofensiva|offensive|alto el fuego|ceasefire|hostilidades|hostilities"),
 }
 NUCLEO = {"trigo", "maiz", "soja", "cebada", "girasol", "sorgo", "arroz", "palma", "petroleo", "gas",
-          "cambio", "fertil", "futuros", "bio", "cosecha"}
+          "fertil", "futuros", "bio", "cosecha"}
 RX_PRODUCTOS = {k: _rx(_ini + v[1] + _fin) for k, v in PRODUCTOS.items()}
 
 
@@ -807,29 +807,85 @@ def etiquetar(texto):
     return [k for k, rx in RX_PRODUCTOS.items() if rx.search(texto)]
 
 
-# Temas que nunca queremos, aunque aparezca alguna palabra del rubro
-RX_RUIDO = _rx(_ini + r"malvinas|falklands?|veteranos?|el papa|papa (?:le[oó]n|francisco)|pont[ií]fice|vaticano|pope"
-               r"|f[uú]tbol|football|soccer|selecci[oó]n|mundial de|hor[oó]scopo|far[aá]ndula|celebrities|celebridades" + _fin)
+# ---------- FILTRO ESTRICTO DE RELEVANCIA ----------
+# Temas que NUNCA queremos (deportes, espectáculos, cocina, turismo, Malvinas)
+RX_EXCL_DURO = _rx(_ini + (
+    r"f[uú]tbol|football|soccer|messi|boca juniors|river plate|selecci[oó]n argentina|copa libertadores|"
+    r"champions league|premier league|la liga|mundial de clubes|copa del mundo|world cup|nba|nfl|mlb|nhl|"
+    r"f[oó]rmula 1|formula 1|f1|tenis|tennis|rugby|b[aá]squet|basketball|boxeo|boxing|ufc|golf|"
+    r"olimp\w*|olympic\w*|m[uú]sica|music|concierto\w*|concert\w*|recital\w*|cantante\w*|singer|"
+    r"[aá]lbum|album|festival(?:es)?|grammy|oscar\w*|netflix|pel[ií]cula\w*|movie\w*|far[aá]ndula|"
+    r"celebrit\w*|famos[oa]s?|hor[oó]scopo|horoscope|influencer|tiktok|"
+    r"malvinas|falklands?|"
+    r"recetas?|recipes?|chef\w*|gastronom\w*|restaurant\w*|turismo|tourism") + _fin)
 
-# Contexto estricto: sin palabras sueltas como gas, oil, ports o energía
-RX_CTX_ESTRICTO = _rx(_ini + r"grains?|granos?|cereal\w*|agr[ií]\w*|agro\w*|farm\w*|crops?|cultivos?|oilseeds?|oleaginos\w*"
-                      r"|commodit\w*|fertiliz\w*|harina|molienda|crush\w*|silos?|productores?|exportaci\w*|retenciones"
-                      r"|food (?:security|prices?)|seguridad alimentaria|puertos? cerealer\w*|grain (?:ports?|terminals?)" + _fin)
+# Policiales / accidentes menores: se descartan salvo que el título trate de un producto central
+RX_EXCL_SUAVE = _rx(_ini + (
+    r"polic[ií]a\w*|police|detenid\w*|arrest\w*|asesin\w*|homicidi\w*|murder\w*|crimen\w*|crime|"
+    r"robos?|asalto\w*|robbery|secuestr\w*|narco\w*|tiroteo\w*|shooting|accidente\w*|accident|"
+    r"choque|incendio\w*|femicidi\w*|estafa\w*|fraud\w*|condena\w*|sentenced|prisi[oó]n|jail|prison") + _fin)
+
+# Contexto agro general (para medios especializados)
+RX_AGRO = _rx(_ini + r"agr[ií]\w*|agro\w*|farm\w*|crops?|cultivos?|grains?|granos?|cereal\w*|oilseeds?|oleaginos\w*|livestock" + _fin)
+
+# Economía / mercados que aparecen en las queries (dólar, yuan, aranceles, tasas...)
+RX_MACRO = _rx(_ini + (
+    r"cotizaci[oó]n del (?:d[oó]lar|yuan)|d[oó]lar (?:blue|oficial|mayorista|futuro|ccl|mep)|precio del d[oó]lar|"
+    r"yuan|renminbi|tipo de cambio|exchange rates?|dollar index|aranceles?|tariffs?|trade wars?|"
+    r"guerras? comercial\w*|retenciones|tasas? de inter[eé]s|interest rates?") + _fin)
+RX_ELEC = _rx(_ini + r"elecciones presidenciales|presidential elections?" + _fin)
+FUENTES_ECO = {"economia", "mercados", "comercio exterior", "politica comercial",
+               "logistica", "estadisticas", "oficial"}
 
 
-def es_relevante(titulo, tipo):
-    if RX_RUIDO.search(titulo):
+def es_relevante(texto, tipo):
+    """True solo si la noticia trata de agro, energía, logística, mercados/economía
+    vinculada a las queries, o conflictos bélicos con impacto en el mercado."""
+    if RX_EXCL_DURO.search(texto):
         return False
-    tags = set(etiquetar(titulo))
-    if tags & NUCLEO:                      # trigo, soja, petróleo, cambio, biocombustibles, etc.
+    tags = set(etiquetar(texto))
+    nucleo = bool(tags & NUCLEO)
+    if RX_EXCL_SUAVE.search(texto) and not nucleo:
+        return False
+    if nucleo:
         return True
-    if tipo == "agro":                     # medio especializado: alcanza con algún tema o contexto agro
-        return bool(tags) or bool(RX_CTX_ESTRICTO.search(titulo))
-    return bool(tags) and bool(RX_CTX_ESTRICTO.search(titulo))
+    ctx = bool(RX_CTX.search(texto))
+    if tags and ctx:
+        return True
+    if tipo == "agro" and (tags or RX_AGRO.search(texto)):
+        return True
+    if RX_MACRO.search(texto) and (ctx or tipo in FUENTES_ECO):
+        return True
+    if RX_ELEC.search(texto) and ctx:
+        return True
+    return bool(clasificar(texto))      # alertas de precio o ataque bélico con impacto en mercados
+
+
+# Idioma rápido, para no descartar de entrada títulos en portugués, francés, alemán, ruso, etc.
+from langdetect import detect as _detect, DetectorFactory as _DF
+_DF.seed = 0
+
+
+def _lang(t):
+    t = re.sub(r"\s+[-–|]\s+[^-–|]{2,40}$", "", t)
+    try:
+        return _detect(t)
+    except Exception:
+        return "auto"
+
+
+def relevante_previa(titulo, tipo):
+    """Primera pasada (antes de traducir). Si el título no está en español/inglés,
+    no se descarta todavía: se decide después de traducirlo."""
+    if RX_EXCL_DURO.search(titulo):
+        return False
+    if es_relevante(titulo, tipo):
+        return True
+    return _lang(titulo) not in ("es", "en")
 
 # %% 4. Candidatas, traducción y segunda pasada contra repetidas
 _n0 = len(noticias)
-_ok = pd.Series([es_relevante(t, c) for t, c in zip(noticias["titulo"], noticias["cat"])],
+_ok = pd.Series([relevante_previa(t, c) for t, c in zip(noticias["titulo"], noticias["cat"])],
                 index=noticias.index, dtype=bool)
 noticias = noticias[_ok].reset_index(drop=True)
 print(f"{_n0 - len(noticias)} noticias descartadas por no tratar de agro, energía o logística de granos")
@@ -940,6 +996,12 @@ for lang, titulos in por_idioma.items():
             traducciones[t_orig] = t_es
 
 cand["es"] = [traducciones.get(t, t) for t in cand["titulo"]]
+
+# Segunda pasada de relevancia, ya con el título traducido (para títulos en otros idiomas)
+_n1 = len(cand)
+cand = cand[[es_relevante(f"{o} {e}", c) for o, e, c in zip(cand["titulo"], cand["es"], cand["cat"])]].copy()
+print(f"{_n1 - len(cand)} noticias descartadas tras traducir por no ser relevantes")
+
 print(f"{len(originales)} títulos · {sum(1 for t in originales if traducciones.get(t, t).strip() != t.strip())} traducidos")
 if errores_trad:
     print(f"Aviso: {len(errores_trad)} errores de traducción. Primero: {errores_trad[0]}")
