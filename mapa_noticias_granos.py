@@ -746,6 +746,11 @@ RX_ACTIVOS = {
 }
 RX_SUBA = _rx(r"(?<!\w)(?:alz\w*|aument\w*|repunt\w*|sub[eií]\w*|suba|subas|rall?y|surge|surges|surging|soar\w*|jump\w*|rise|rises|rising|rose|climb\w*|gain\w*|higher|hike\w*)(?!\w)")
 RX_BAJA = _rx(r"(?<!\w)(?:baj[aóe]\w*|cae|caen|caer|ca[ií]d\w*|cay[oó]\w*|desplom\w*|retroced\w*|derrump\w*|falls?|fell|falling|drop\w*|plung\w*|slump\w*|declin\w*|lower|tumbl\w*|slid\w*|sink\w*|sank)(?!\w)")
+RX_CONTEXTO_PRECIO = _rx(
+    r"precio|precios|price|prices|pricing|cotizaci[oó]n|cotizaciones|"
+    r"quotation|quotations|futuros|futures|cbot|matba|euronext|"
+    r"mercado de futuros|market price|cash price|precio fob|precio fas"
+)
 RX_CTX = _rx(_ini + r"grains?|granos?|cereal\w*|agr[ií]\w*|agro\w*|farm\w*|crops?|cultivos?|oilseeds?|oleaginos\w*|commodit\w*|fertiliz\w*|harina|molienda|crush\w*|silos?|food (?:security|prices?)|seguridad alimentaria|black sea|mar negro|red sea|mar rojo|hormuz|ormuz|shipping|vessels?|tankers?|bulk|freight|fletes?|oil|petr[oó]leo|crudo|crude|gas|energ\w*|lng|gnl|puertos?|ports?" + _fin)
 
 RX_MIL = _rx(_ini + r"ataque\w*|atac[oó]\w*|atacan|bombarde\w*|misil\w*|dron(?:es)?|ofensiva|invasi[oó]n|attacks?|attacked|attacking|airstrikes?|air strikes?|missiles?|drones?|bombing|bombed|shelling|invasion|offensive" + _fin)
@@ -757,7 +762,7 @@ RX_GUERRA_COMERCIAL = _rx(r"trade wars?|guerras? comercial\w*|price wars?|guerra
 def clasificar(titulo):
     out = []
     sube, baja = bool(RX_SUBA.search(titulo)), bool(RX_BAJA.search(titulo))
-    if sube or baja:
+   if (sube or baja) and RX_CONTEXTO_PRECIO.search(titulo):
         flecha = "▲" if (sube and not baja) else "▼" if (baja and not sube) else "▲▼"
         for nombre, rx in RX_ACTIVOS.items():
             if rx.search(titulo):
