@@ -19,11 +19,11 @@ QUERIES_BASE = [
     "malting", "grain taxes", "exportaciones soja", "cosecha gruesa", "aranceles granos",
     "cebada", "barley", "beer market", "biocombustibles", "grain prices", "grain",
     "harvest", "cosecha", "siembra", "Agriculture", "Breweries", "Beer Industry",
-    "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "Sunflower seed",
+    "Agriculture sector", "crop", "Sunflower seed",
     "Sunflower oil", "Sunflower pellets", "Sunflower prices", "milling", "soybean meal",
-    "aceite de palma", "palma", "palm oil", "tariffs",
+    "aceite de palma", "palma", "palm oil", "tariffs grain",
     "precio petróleo", "oil prices", "gas natural", "natural gas prices",
-    "sorgo", "sorghum", "arroz", "rice prices","elecciones presidenciales", "Cotización del dólar", "Cotización del Yuan", "biofuels"
+    "sorgo", "sorghum", "arroz", "rice prices", "Cotización del dólar", "Cotización del Yuan", "biofuels"
 ]
 DIAS = 2                  # noticias de los últimos N días
 MAX_POR_PAIS = 30         # máximo de noticias que se MUESTRAN por país
@@ -178,10 +178,10 @@ FUENTES = [
     ("Ruralnet", "ruralnet.com.ar", "agro"),
     ("Agritotal", "agritotal.com", "agro"),
     ("Agroempresario", "agroempresario.com", "agro"),
-    ("Clarín Rural", "clarin.com", "agro"),
-    ("La Nación Campo", "lanacion.com.ar", "agro"),
+    ("Clarín Rural", "clarin.com", "general"),
+    ("La Nación Campo", "lanacion.com.ar", "general"),
     ("Revista Chacra", "revistachacra.com.ar", "agro"),
-    ("Agrovoz", "lavoz.com.ar", "agro"),
+    ("Agrovoz", "lavoz.com.ar", "general"),
     ("Agencia Tierra Viva", "agenciatierraviva.com.ar", "agro"),
     ("Infobae", "infobae.com", "economia"),
     ("Ámbito", "ambito.com", "economia"),
@@ -205,8 +205,9 @@ FUENTES = [
     ("Lloyd's List", "lloydslist.com", "logistica"),
     ("Port Technology International", "porttechnology.org", "logistica"),
 ]
-# Para los medios que publican de todo, la búsqueda por sitio se limita a estos temas
-KW_SITE = '(grain OR wheat OR corn OR soybeans OR "crude oil" OR "natural gas" OR fertilizer OR "Black Sea" OR "bulk carrier")'
+# Para los medios que NO son "agro", la búsqueda por sitio se limita a estos temas (inglés y español)
+KW_SITE = ('(grain OR wheat OR corn OR soybeans OR "crude oil" OR "natural gas" OR fertilizer OR "Black Sea" OR "bulk carrier"'
+           ' OR soja OR trigo OR maíz OR cebada OR granos OR retenciones OR exportaciones OR petróleo OR biocombustibles OR "tipo de cambio")')
 
 QUERIES_ES = """
 oferta y demanda mundial de granos
@@ -778,6 +779,7 @@ PRODUCTOS = {
     "petroleo": ("Petróleo", r"petr[oó]leo|crudo|brent|wti|crude|barril(?:es)?|barrels?"
                              r"|(?<!sunflower )(?<!palm )(?<!soybean )(?<!vegetable )(?<!olive )oil prices?"),
     "gas": ("Gas natural", r"gas natural|natural gas|gnl|lng"),
+    "cambio": ("Tipo de cambio", r"tipo de cambio|d[oó]lar (?:oficial|mayorista|blue|futuro)|cotizaci[oó]n del d[oó]lar|cotizaci[oó]n del yuan|yuan|devaluaci[oó]n|brecha cambiaria|exchange rates?|dollar index"),
     "fertil": ("Fertilizantes", r"fertilizantes?|fertilizers?|urea|potasa|potash|fosfatad\w*|phosphates?|nitrogenad\w*"),
     "futuros": ("Futuros y commodities", r"cbot|matba|euronext|chicago board|(?:grain|wheat|corn|soybean|agricultural|crop|oilseed) futures"
                                           r"|futuros (?:de )?(?:granos|trigo|ma[ií]z|soja|agr[ií]colas)|agricultural commodit\w+|commodities agr\w+|crush margins?|m[aá]rgenes? de molienda"),
@@ -796,7 +798,7 @@ PRODUCTOS = {
                                       r"|bombard\w*|airstrikes?|air strikes?|ofensiva|offensive|alto el fuego|ceasefire|hostilidades|hostilities"),
 }
 NUCLEO = {"trigo", "maiz", "soja", "cebada", "girasol", "sorgo", "arroz", "palma", "petroleo", "gas",
-          "fertil", "futuros", "bio", "cosecha"}
+          "cambio", "fertil", "futuros", "bio", "cosecha"}
 RX_PRODUCTOS = {k: _rx(_ini + v[1] + _fin) for k, v in PRODUCTOS.items()}
 
 
@@ -805,13 +807,25 @@ def etiquetar(texto):
     return [k for k, rx in RX_PRODUCTOS.items() if rx.search(texto)]
 
 
+# Temas que nunca queremos, aunque aparezca alguna palabra del rubro
+RX_RUIDO = _rx(_ini + r"malvinas|falklands?|veteranos?|el papa|papa (?:le[oó]n|francisco)|pont[ií]fice|vaticano|pope"
+               r"|f[uú]tbol|football|soccer|selecci[oó]n|mundial de|hor[oó]scopo|far[aá]ndula|celebrities|celebridades" + _fin)
+
+# Contexto estricto: sin palabras sueltas como gas, oil, ports o energía
+RX_CTX_ESTRICTO = _rx(_ini + r"grains?|granos?|cereal\w*|agr[ií]\w*|agro\w*|farm\w*|crops?|cultivos?|oilseeds?|oleaginos\w*"
+                      r"|commodit\w*|fertiliz\w*|harina|molienda|crush\w*|silos?|productores?|exportaci\w*|retenciones"
+                      r"|food (?:security|prices?)|seguridad alimentaria|puertos? cerealer\w*|grain (?:ports?|terminals?)" + _fin)
+
+
 def es_relevante(titulo, tipo):
-    if tipo == "agro":
-        return True
+    if RX_RUIDO.search(titulo):
+        return False
     tags = set(etiquetar(titulo))
-    if tags & NUCLEO:
+    if tags & NUCLEO:                      # trigo, soja, petróleo, cambio, biocombustibles, etc.
         return True
-    return bool(tags) and bool(RX_CTX.search(titulo))
+    if tipo == "agro":                     # medio especializado: alcanza con algún tema o contexto agro
+        return bool(tags) or bool(RX_CTX_ESTRICTO.search(titulo))
+    return bool(tags) and bool(RX_CTX_ESTRICTO.search(titulo))
 
 # %% 4. Candidatas, traducción y segunda pasada contra repetidas
 _n0 = len(noticias)
