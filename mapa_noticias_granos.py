@@ -1494,7 +1494,7 @@ css_fondo = (f"background-image:linear-gradient({VELO_FONDO},{VELO_FONDO}),url('
 ahora = datetime.now(ART).strftime("%d/%m/%Y %H:%M")
 cab_html = ('<div id="cab">'
             + (f'<img src="{logo_src}" alt="Bolsa de Cereales y Productos de Bahía Blanca"><div class="sep"></div>' if logo_src else "")
-            + '<div><h1>Noticias de granos y ganadería</h1>'
+            + '<div><h1>Noticias de granos</h1>'
             + f'<p><span id="n-total">{total_mostradas}</span> noticias &nbsp;·&nbsp; últimos {DIAS} días &nbsp;·&nbsp; actualizado {ahora}</p></div></div>')
 
 PAGINA = """<!DOCTYPE html>
@@ -1502,7 +1502,7 @@ PAGINA = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Noticias de granos y ganadería</title>
+<title>Noticias de granos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=__GFONTS__&display=swap" rel="stylesheet">
