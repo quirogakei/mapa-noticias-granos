@@ -8,9 +8,10 @@ Mapa de noticias de granos y ganadería
 - Sin noticias repetidas (también entre idiomas).
 - Filtros por producto o tema (granos, ganadería, energía, mercados, etc.).
 - Traduce los títulos de CUALQUIER idioma al español (gratis, sin clave, con deep-translator).
+- Al pasar el mouse sobre cada título se ve un mini resumen de la nota.
 - Genera un archivo index.html listo para publicar en GitHub Pages.
 
-Requiere: pip install feedparser plotly pandas langdetect deep-translator
+Requiere: pip install feedparser plotly pandas langdetect deep-translator googlenewsdecoder
 (Opcional: TRADUCTOR=deepl y DEEPL_API_KEY para volver a usar DeepL.)
 """
 
@@ -1243,6 +1244,139 @@ paises_ord = sorted(conteo, key=lambda p: len(conteo[p]), reverse=True)
 vis = {p: conteo[p][:MAX_POR_PAIS] for p in paises_ord}
 total_mostradas = sum(len(v) for v in vis.values())
 
+# %% 4b. Mini resumen de cada noticia (se ve al pasar el mouse sobre el título)
+# Se baja la descripción que publica cada nota (og:description / meta description), se traduce al español
+# y se guarda en caché. Si el medio bloquea el acceso (paywall, etc.), la noticia queda sin resumen
+# y el título funciona igual.
+# Requiere: pip install googlenewsdecoder   (los links de Google News son redirecciones y hay que decodificarlos)
+import html as _html
+import urllib.request
+try:
+    from googlenewsdecoder import gnewsdecoder
+except ImportError:
+    gnewsdecoder = None
+    print("Aviso: falta 'pip install googlenewsdecoder'; no se generan resúmenes.")
+
+RESUMENES = True            # False = sin resúmenes (corrida más rápida)
+RESUMEN_MAX_NUEVOS = 200    # máximo de notas nuevas a resumir por corrida (el resto queda para la próxima)
+RESUMEN_MAX_CHARS = 300     # largo máximo del resumen
+CACHE_RES = "cache_resumenes.json"
+MAX_CACHE_RES = 4000
+_HDR = {"User-Agent": "Mozilla/5.0 (compatible; MapaNoticias/1.0)", "Accept-Language": "es,en;q=0.8"}
+
+try:
+    with open(CACHE_RES, encoding="utf-8") as fh:
+        _cache_res = json.load(fh)
+except Exception:
+    _cache_res = {}
+_res_temp = {}              # resúmenes que no se pudieron traducir: se muestran hoy pero no se guardan
+print(f"Caché de resúmenes: {len(_cache_res)} notas")
+
+
+def _url_real(link):
+    """Los links de Google News son redirecciones: hay que decodificarlos para llegar a la nota."""
+    if "news.google.com" not in link:
+        return link
+    if gnewsdecoder is None:
+        return None
+    try:
+        r = gnewsdecoder(link, interval=1)
+        if r.get("status"):
+            return r["decoded_url"]
+    except Exception:
+        pass
+    return None
+
+
+def _descripcion(url):
+    """Devuelve la descripción de la nota, '' si no tiene, o None si no se pudo acceder."""
+    try:
+        req = urllib.request.Request(url, headers=_HDR)
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            cs = resp.headers.get_content_charset() or "utf-8"
+            txt = resp.read(300000).decode(cs, errors="replace")
+    except Exception:
+        return None
+    for pat in (r'<meta[^>]+(?:property|name)=["\']og:description["\'][^>]*content=["\']([^"\']+)',
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:property|name)=["\']og:description["\']',
+                r'<meta[^>]+name=["\']description["\'][^>]*content=["\']([^"\']+)',
+                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*name=["\']description["\']'):
+        m = re.search(pat, txt, re.I)
+        if m:
+            d = " ".join(_html.unescape(m.group(1)).split())
+            if len(d) > 40:
+                return d
+    return ""
+
+
+def _resumir_uno(link):
+    u = _url_real(link)
+    if not u:
+        return None
+    return _descripcion(u)
+
+
+def _recortar(t):
+    t = " ".join(t.split())
+    if len(t) <= RESUMEN_MAX_CHARS:
+        return t
+    return t[:RESUMEN_MAX_CHARS].rsplit(" ", 1)[0].rstrip(" ,;:.") + "…"
+
+
+def agregar_resumenes(prioridad, todos):
+    global _cache_res
+    if not RESUMENES or gnewsdecoder is None:
+        return
+    titulos = {it["l"]: it["o"] for it in todos}
+    pend = []
+    for it in prioridad:
+        if it["l"] not in _cache_res and it["l"] not in pend:
+            pend.append(it["l"])
+    pend = pend[:RESUMEN_MAX_NUEVOS]
+    if not pend:
+        return
+    print(f"Resumiendo {len(pend)} notas nuevas (puede tardar unos minutos)...")
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        crudos = list(ex.map(_resumir_uno, pend))
+    listos, a_traducir = {}, []
+    for l, d in zip(pend, crudos):
+        if d is None:                       # no se pudo acceder: se reintenta en la próxima corrida
+            continue
+        if not d:
+            listos[l] = ""
+            continue
+        tk_d, tk_t = tokens(d), tokens(titulos.get(l, ""))
+        if tk_d and tk_t and len(tk_d & tk_t) / len(tk_d | tk_t) >= 0.8:
+            listos[l] = ""                  # la descripción repite el título: no aporta
+        elif idioma(d) == "es":
+            listos[l] = d
+        else:
+            a_traducir.append((l, d))
+    if a_traducir:
+        trad = traducir_lote([d for _, d in a_traducir], "auto")
+        for (l, d), t in zip(a_traducir, trad):
+            if t.strip() == d.strip():      # no se tradujo: se muestra hoy, se reintenta después
+                _res_temp[l] = _recortar(d)
+            else:
+                listos[l] = t
+    for l, t in listos.items():
+        _cache_res[l] = _recortar(t) if t else ""
+    if len(_cache_res) > MAX_CACHE_RES:
+        _cache_res = dict(list(_cache_res.items())[-MAX_CACHE_RES:])
+    try:
+        with open(CACHE_RES, "w", encoding="utf-8") as fh:
+            json.dump(_cache_res, fh, ensure_ascii=False)
+    except Exception as e:
+        print("Aviso: no se pudo guardar la caché de resúmenes:", repr(e)[:100])
+
+
+_todos = [it for v in conteo.values() for it in v] + alertas_lista
+_prio = alertas_lista[:MAX_ALERTAS] + [it for v in vis.values() for it in v] + _todos
+agregar_resumenes(_prio, _todos)
+for it in _todos:
+    it["r"] = _cache_res.get(it["l"]) or _res_temp.get(it["l"], "")
+print(f"{sum(1 for it in _todos if it['r'])} de {len(_todos)} notas con resumen")
+
 # %% 5. Mapa
 import plotly.graph_objects as go
 
@@ -1301,12 +1435,43 @@ var fijado = null;
 var actual = null;
 var TOUCH = window.matchMedia('(hover: none)').matches;
 
+/* ---------- Tooltip con mini resumen ---------- */
+var tip = document.createElement('div'); tip.id = 'tip'; document.body.appendChild(tip);
+function ponerTip(ev) {
+  var x = ev.clientX + 14, y = ev.clientY + 18, w = tip.offsetWidth, h = tip.offsetHeight;
+  if (x + w > window.innerWidth - 8) x = Math.max(8, ev.clientX - w - 14);
+  if (y + h > window.innerHeight - 8) y = Math.max(8, ev.clientY - h - 12);
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function abrirTip(ev, n) {
+  tip.innerHTML = '';
+  var cab = document.createElement('b');
+  cab.textContent = (n.f ? n.f + ' · ' : '') + n.d;
+  tip.appendChild(cab);
+  var cuerpo = document.createElement('span');
+  if (n.r) { cuerpo.textContent = n.r; }
+  else { cuerpo.textContent = 'Resumen no disponible para esta nota.'; cuerpo.className = 'sin'; }
+  tip.appendChild(cuerpo);
+  if (n.o && n.o !== n.t) {
+    var org = document.createElement('em');
+    org.textContent = 'Original: ' + n.o;
+    tip.appendChild(org);
+  }
+  tip.style.display = 'block';
+  ponerTip(ev);
+}
+function cerrarTip() { tip.style.display = 'none'; }
+
 function crearItem(n) {
   var li = document.createElement('li');
   if (n.a && n.a.length) li.className = 'alerta';
   var a = document.createElement('a');
   a.href = n.l; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = n.t;
-  if (n.o && n.o !== n.t) a.title = 'Original: ' + n.o;
+  if (!TOUCH) {
+    a.addEventListener('mouseenter', function (ev) { abrirTip(ev, n); });
+    a.addEventListener('mousemove', ponerTip);
+    a.addEventListener('mouseleave', cerrarTip);
+  }
   var s = document.createElement('small');
   s.textContent = (n.f ? n.f + ' · ' : '') + n.d;
   li.appendChild(a); li.appendChild(s);
@@ -1321,6 +1486,7 @@ function crearItem(n) {
 function mostrar(pais) {
   if (pais === actual) return;
   actual = pais;
+  cerrarTip();
   var items = visibles(pais);
   titulo.textContent = pais + ' · ' + items.length + ' noticias';
   panel.innerHTML = '';
@@ -1340,6 +1506,7 @@ function pasa(n) {
 }
 function visibles(pais) { return (DATA[pais] || []).filter(pasa).slice(0, MAXP); }
 function renderAlertas() {
+  cerrarTip();
   var it = ALERTAS.filter(pasa).slice(0, MAXA);
   document.getElementById('cuenta-alertas').textContent = it.length;
   listaAl.innerHTML = '';
@@ -1550,6 +1717,10 @@ PAGINA = """<!DOCTYPE html>
   #lista a, #lista-alertas a { color:var(--link); text-decoration:none; font-size:14px; line-height:1.35; font-weight:500; }
   #lista a:hover, #lista-alertas a:hover { text-decoration:underline; }
   #lista small, #lista-alertas small { display:block; margin-top:3px; color:var(--suave); font-size:12px; }
+  #tip { position:fixed; z-index:9999; display:none; max-width:340px; padding:10px 12px; background:#fff; color:var(--texto); border:1px solid var(--borde); border-left:3px solid var(--marcador); border-radius:3px; box-shadow:0 4px 14px rgba(0,0,0,.15); font-size:13px; line-height:1.4; pointer-events:none; }
+  #tip b { display:block; margin-bottom:4px; font-size:11px; color:var(--suave); font-weight:500; }
+  #tip .sin { color:var(--suave); font-style:italic; }
+  #tip em { display:block; margin-top:6px; padding-top:6px; border-top:1px solid var(--borde); font-size:11px; color:var(--suave); }
   .badge { display:inline-block; margin:4px 4px 0 0; padding:1px 6px; border-radius:2px; font-size:11px; background:var(--alerta); color:#fff; font-weight:600; }
   .badge.bel { background:#9d1c1c; color:#fff; }
   #app { height:100%; height:100dvh; }
