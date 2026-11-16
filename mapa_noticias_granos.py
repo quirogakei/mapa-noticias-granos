@@ -1255,14 +1255,18 @@ try:
     from googlenewsdecoder import gnewsdecoder
 except ImportError:
     gnewsdecoder = None
-    print("Aviso: falta 'pip install googlenewsdecoder'; no se generan resúmenes.")
+    print("AVISO: falta 'pip install googlenewsdecoder'; NO se generan resúmenes. "
+          "Agregalo al paso pip install del workflow.")
 
 RESUMENES = True            # False = sin resúmenes (corrida más rápida)
 RESUMEN_MAX_NUEVOS = 200    # máximo de notas nuevas a resumir por corrida (el resto queda para la próxima)
 RESUMEN_MAX_CHARS = 300     # largo máximo del resumen
-CACHE_RES = "cache_resumenes.json"
+CACHE_RES = "cache_resumenes_v2.json"
 MAX_CACHE_RES = 4000
-_HDR = {"User-Agent": "Mozilla/5.0 (compatible; MapaNoticias/1.0)", "Accept-Language": "es,en;q=0.8"}
+# Primero como un navegador; si no hay descripción, como el rastreador de Facebook
+# (muchos medios con paywall le muestran la descripción a ese bot).
+_UAS = ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"]
 
 try:
     with open(CACHE_RES, encoding="utf-8") as fh:
@@ -1274,46 +1278,67 @@ print(f"Caché de resúmenes: {len(_cache_res)} notas")
 
 
 def _url_real(link):
-    """Los links de Google News son redirecciones: hay que decodificarlos para llegar a la nota."""
+    """Los links de Google News son redirecciones: hay que decodificarlos para llegar a la nota.
+    Devuelve (url, mensaje_de_error)."""
     if "news.google.com" not in link:
-        return link
+        return link, ""
     if gnewsdecoder is None:
-        return None
+        return None, "librería googlenewsdecoder no instalada"
     try:
         r = gnewsdecoder(link, interval=1)
-        if r.get("status"):
-            return r["decoded_url"]
-    except Exception:
-        pass
-    return None
+    except Exception as e:
+        return None, repr(e)[:150]
+    # las versiones nuevas devuelven "success"; las viejas, "status"
+    if isinstance(r, dict) and (r.get("success") or r.get("status")) and r.get("decoded_url"):
+        return r["decoded_url"], ""
+    return None, str((r or {}).get("message", "respuesta vacía"))[:150]
 
 
-def _descripcion(url):
-    """Devuelve la descripción de la nota, '' si no tiene, o None si no se pudo acceder."""
-    try:
-        req = urllib.request.Request(url, headers=_HDR)
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            cs = resp.headers.get_content_charset() or "utf-8"
-            txt = resp.read(300000).decode(cs, errors="replace")
-    except Exception:
-        return None
-    for pat in (r'<meta[^>]+(?:property|name)=["\']og:description["\'][^>]*content=["\']([^"\']+)',
-                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:property|name)=["\']og:description["\']',
-                r'<meta[^>]+name=["\']description["\'][^>]*content=["\']([^"\']+)',
-                r'<meta[^>]+content=["\']([^"\']+)["\'][^>]*name=["\']description["\']'):
-        m = re.search(pat, txt, re.I)
-        if m:
-            d = " ".join(_html.unescape(m.group(1)).split())
+_RX_META = re.compile(r"<meta\s[^>]*>", re.I)
+_RX_ATTR = re.compile(r'([\w:-]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')')
+
+
+def _meta_desc(txt):
+    cand = {}
+    for tag in _RX_META.findall(txt):
+        at = {k.lower(): (v1 or v2) for k, v1, v2 in _RX_ATTR.findall(tag)}
+        clave = (at.get("property") or at.get("name") or "").lower()
+        if clave in ("og:description", "twitter:description", "description") and at.get("content"):
+            cand.setdefault(clave, at["content"])
+    for k in ("og:description", "twitter:description", "description"):
+        if k in cand:
+            d = " ".join(_html.unescape(cand[k]).split())
             if len(d) > 40:
                 return d
     return ""
 
 
+def _descripcion(url):
+    """Devuelve la descripción de la nota, '' si no tiene, o None si no se pudo acceder."""
+    accedio = False
+    for ua in _UAS:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": ua, "Accept-Language": "es,en;q=0.8"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                cs = resp.headers.get_content_charset() or "utf-8"
+                txt = resp.read(300000).decode(cs, errors="replace")
+        except Exception:
+            continue
+        accedio = True
+        d = _meta_desc(txt)
+        if d:
+            return d
+    return "" if accedio else None
+
+
 def _resumir_uno(link):
-    u = _url_real(link)
+    u, msg = _url_real(link)
     if not u:
-        return None
-    return _descripcion(u)
+        return ("decod", msg)
+    d = _descripcion(u)
+    if d is None:
+        return ("acceso", u)
+    return ("ok", d)
 
 
 def _recortar(t):
@@ -1336,13 +1361,22 @@ def agregar_resumenes(prioridad, todos):
     if not pend:
         return
     print(f"Resumiendo {len(pend)} notas nuevas (puede tardar unos minutos)...")
-    with ThreadPoolExecutor(max_workers=6) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         crudos = list(ex.map(_resumir_uno, pend))
     listos, a_traducir = {}, []
-    for l, d in zip(pend, crudos):
-        if d is None:                       # no se pudo acceder: se reintenta en la próxima corrida
+    n_dec = n_acc = n_sin = 0
+    ej_dec = ej_acc = ""
+    for l, (estado, d) in zip(pend, crudos):
+        if estado == "decod":               # no se pudo decodificar el link: se reintenta en la próxima corrida
+            n_dec += 1
+            ej_dec = ej_dec or d
+            continue
+        if estado == "acceso":              # el medio no dejó entrar: se reintenta en la próxima corrida
+            n_acc += 1
+            ej_acc = ej_acc or d
             continue
         if not d:
+            n_sin += 1
             listos[l] = ""
             continue
         tk_d, tk_t = tokens(d), tokens(titulos.get(l, ""))
@@ -1359,6 +1393,12 @@ def agregar_resumenes(prioridad, todos):
                 _res_temp[l] = _recortar(d)
             else:
                 listos[l] = t
+    print(f"Resúmenes: {len(pend) - n_dec - n_acc - n_sin} con texto · {n_sin} sin descripción · "
+          f"{n_dec} links que no se pudieron decodificar · {n_acc} notas sin acceso")
+    if ej_dec:
+        print("  Ejemplo de error al decodificar:", ej_dec)
+    if ej_acc:
+        print("  Ejemplo de nota sin acceso:", ej_acc)
     for l, t in listos.items():
         _cache_res[l] = _recortar(t) if t else ""
     if len(_cache_res) > MAX_CACHE_RES:
@@ -1498,11 +1538,14 @@ var MAXP = __MAXP__, MAXA = __MAXA__;
 var COL_AL = '__COL_AL__', COL_OK = '__COL_OK__';
 var PAISES = __PAISES__;
 var GRUPOS = __TAGS__;
-var sel = {}, soloAl = false;
+var sel = {}, soloAl = false, modoY = false;
 function pasa(n) {
   if (soloAl && !(n.a && n.a.length)) return false;
-  if (!Object.keys(sel).length) return true;
-  return (n.p || []).some(function (t) { return sel[t]; });
+  var ks = Object.keys(sel);
+  if (!ks.length) return true;
+  var tg = n.p || [];
+  if (modoY) return ks.every(function (k) { return tg.indexOf(k) >= 0; });
+  return tg.some(function (t) { return sel[t]; });
 }
 function visibles(pais) { return (DATA[pais] || []).filter(pasa).slice(0, MAXP); }
 function renderAlertas() {
@@ -1549,6 +1592,12 @@ var fTop = document.createElement('div'); fTop.className = 'f-top'; barra.append
 var fCuerpo = document.createElement('div'); fCuerpo.className = 'f-grupos'; barra.appendChild(fCuerpo);
 var btnTodos = chip('Todos', '', function () { sel = {}; soloAl = false; cambiar(); }, fTop);
 var btnAl = chip('Solo alertas', 'al', function () { soloAl = !soloAl; cambiar(); }, fTop);
+var fModo = document.createElement('div'); fModo.className = 'f-modo'; fTop.appendChild(fModo);
+var fModoT = document.createElement('span'); fModoT.textContent = 'Combinar filtros'; fModo.appendChild(fModoT);
+var fModoB = document.createElement('div'); fModoB.className = 'f-modo-btns'; fModo.appendChild(fModoB);
+var btnO = chip('Alguno', '', function () { modoY = false; cambiar(); }, fModoB);
+var btnY = chip('Todos a la vez', '', function () { modoY = true; cambiar(); }, fModoB);
+var fModoAyuda = document.createElement('small'); fModo.appendChild(fModoAyuda);
 var btnVer = chip('Filtros', 'ver', function () {
   barra.classList.toggle('cerrado'); rotuloVer();
   setTimeout(function () { Plotly.Plots.resize(gd); }, 50);
@@ -1576,6 +1625,11 @@ function cambiar() {
   btnTodos.classList.toggle('on', !Object.keys(sel).length && !soloAl);
   Object.keys(chips).forEach(function (k) { chips[k].classList.toggle('on', !!sel[k]); });
   btnAl.classList.toggle('on', soloAl);
+  btnO.classList.toggle('on', !modoY);
+  btnY.classList.toggle('on', modoY);
+  fModoAyuda.textContent = modoY
+    ? 'Solo noticias que mencionen TODOS los temas marcados (ej.: girasol y soja juntos).'
+    : 'Noticias que mencionen ALGUNO de los temas marcados (ej.: girasol o soja).';
   rotuloVer();
   aplicarFiltro(); renderAlertas(); refrescarPanel();
 }
@@ -1691,9 +1745,14 @@ PAGINA = """<!DOCTYPE html>
   .f-top .chip { width:100%; text-align:left; }
   .f-top .chip.ver { display:none; }
   #filtros.cerrado .f-grupos { display:none; }
+  .f-modo { display:flex; flex-direction:column; gap:5px; padding:8px; border:1px solid var(--borde); border-radius:3px; background:#fafcf7; }
+  .f-modo > span { font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--suave); }
+  .f-modo small { font-size:11px; line-height:1.3; color:var(--suave); }
+  .f-modo-btns { display:flex; gap:4px; }
   .f-grupos { display:flex; flex-direction:column; gap:14px; }
   .f-grupo { display:block; }
   .f-nombre { display:block; margin-bottom:5px; padding-bottom:3px; border-bottom:1px solid var(--borde); font-family:var(--fuente-t); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--titulo); }
+  .f-modo-btns .chip { width:auto; flex:1 1 0; text-align:center; padding:4px 6px; }
   .f-chips { display:flex; flex-direction:column; gap:2px; }
   .f-chips .chip { width:100%; text-align:left; border-color:transparent; background:transparent; }
   .f-chips .chip:hover { background:#f1f5ea; }
