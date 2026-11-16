@@ -1519,14 +1519,18 @@ PAGINA = """<!DOCTYPE html>
   #cab .sep { width:1px; align-self:stretch; background:var(--costa); }
   #cab h1 { margin:0; font-family:var(--fuente-t); font-size:30px; line-height:1.12; font-weight:900; color:var(--titulo); }
   #cab p { margin:6px 0 0; font-size:13px; color:var(--suave); }
-  #filtros { padding:8px 24px 0; }
-  .f-top { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
-  .f-top .chip.ver { margin-left:auto; }
-  .f-grupos { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:6px 28px; }
+  #filtros { flex:0 0 230px; width:230px; box-sizing:border-box; padding:14px 12px; background:var(--panel); border-right:1px solid var(--borde); overflow-y:auto; overscroll-behavior:contain; }
+  .f-top { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+  .f-top .chip { width:100%; text-align:left; }
+  .f-top .chip.ver { display:none; }
   #filtros.cerrado .f-grupos { display:none; }
-  .f-grupo { display:flex; align-items:flex-start; gap:10px; min-width:0; }
-  .f-nombre { flex:0 0 96px; padding-top:5px; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--suave); }
-  .f-chips { display:flex; flex-wrap:wrap; gap:5px; min-width:0; }
+  .f-grupos { display:flex; flex-direction:column; gap:14px; }
+  .f-grupo { display:block; }
+  .f-nombre { display:block; margin-bottom:5px; padding-bottom:3px; border-bottom:1px solid var(--borde); font-family:var(--fuente-t); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--titulo); }
+  .f-chips { display:flex; flex-direction:column; gap:2px; }
+  .f-chips .chip { width:100%; text-align:left; border-color:transparent; background:transparent; }
+  .f-chips .chip:hover { background:#f1f5ea; }
+  .f-chips .chip.on { background:var(--titulo); border-color:var(--titulo); color:#fff; }
   .chip { font:inherit; font-size:13px; cursor:pointer; padding:4px 10px; border-radius:3px; border:1px solid #cfd8c4; background:#fff; color:var(--texto); }
   .chip:hover { border-color:var(--titulo); color:var(--titulo); }
   .chip.on { background:var(--titulo); border-color:var(--titulo); color:#fff; }
@@ -1557,9 +1561,14 @@ PAGINA = """<!DOCTYPE html>
     #cab img { height:34px; }
     #cab h1 { font-size:16px; }
     #cab p { font-size:10px; margin-top:3px; }
-    #filtros { padding:6px 12px 0; }
-    .f-grupos { grid-template-columns:1fr; max-height:26vh; overflow-y:auto; }
-    .f-nombre { flex-basis:90px; }
+    #filtros { flex:0 0 auto; width:auto; padding:6px 12px; border-right:0; border-bottom:1px solid var(--borde); overflow-y:visible; }
+    .f-top { flex-direction:row; flex-wrap:wrap; margin-bottom:0; }
+    .f-top .chip { width:auto; }
+    .f-top .chip.ver { display:inline-block; margin-left:auto; }
+    .f-grupos { margin-top:8px; max-height:26vh; overflow-y:auto; }
+    .f-chips { flex-direction:row; flex-wrap:wrap; gap:5px; }
+    .f-chips .chip { width:auto; border-color:#cfd8c4; background:#fff; }
+    .f-chips .chip.on { background:var(--titulo); border-color:var(--titulo); }
     .chip { white-space:nowrap; flex:0 0 auto; font-size:12px; padding:3px 9px; }
     #panel { flex:1 1 0; width:auto; max-width:none; min-height:0; border-left:0; border-top:1px solid var(--borde); }
     #panel h2 { font-size:16px; padding:10px 12px 2px; }
@@ -1573,7 +1582,8 @@ PAGINA = """<!DOCTYPE html>
 </head>
 <body>
 <div id="app">
-  <div id="mapwrap">__CAB__<div id="filtros"></div><div id="mapcont">__PLOT__</div></div>
+  <aside id="filtros"></aside>
+  <div id="mapwrap">__CAB__<div id="mapcont">__PLOT__</div></div>
   <aside id="panel">
     <details id="alertas" open>
       <summary>Alertas (<span id="cuenta-alertas">0</span>)</summary>
