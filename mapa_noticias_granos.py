@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Mapa de noticias del mercado de granos
+Mapa de noticias de granos y ganadería
 
 - Busca noticias en Google News (RSS) y se queda solo con las de los medios de la lista FUENTES.
-- Descarta las que no tratan de agro, energía, logística de granos, economía de mercados
+- Descarta las que no tratan de agro, ganadería, energía, logística de granos, economía de mercados
   o conflictos bélicos con impacto en el mercado (nada de fútbol, música, Malvinas, policiales menores, etc.).
 - Sin noticias repetidas (también entre idiomas).
-- Filtros por producto o tema.
-- Traduce los títulos de CUALQUIER idioma al español (detecta el idioma de cada título).
+- Filtros por producto o tema (granos, ganadería, energía, mercados, etc.).
+- Traduce los títulos de CUALQUIER idioma al español (gratis, sin clave, con deep-translator).
 - Genera un archivo index.html listo para publicar en GitHub Pages.
 
-Requiere: pip install feedparser plotly pandas deepl langdetect
+Requiere: pip install feedparser plotly pandas langdetect deep-translator
+(Opcional: TRADUCTOR=deepl y DEEPL_API_KEY para volver a usar DeepL.)
 """
 
 # %% 1. Configuración
@@ -23,6 +24,8 @@ QUERIES_BASE = [
     "Agriculture sector", "crop", "war", "guerra", "conflicto armado", "Sunflower seed",
     "Sunflower oil", "Sunflower pellets", "Sunflower prices", "milling", "soybean meal",
     "aceite de palma", "palma", "palm oil", "tariffs",
+    "ganadería", "precio hacienda", "precio novillo", "precio carne vacuna", "cattle prices", "beef prices",
+    "hog prices", "pork prices", "milk prices", "dairy prices", "poultry prices", "livestock",
     "precio petróleo", "oil prices", "gas natural", "natural gas prices",
     "sorgo", "sorghum", "arroz", "rice prices","elecciones presidenciales", "Cotización del dólar", "Cotización del Yuan", "biofuels"
 ]
@@ -157,6 +160,28 @@ FUENTES = [
     ("Fertilizer International", "fertilizerinternational.com", "agro"),
     ("FeedNavigator", "feednavigator.com", "agro"),
     ("AgriBusiness Global", "agribusinessglobal.com", "agro"),
+    # Ganadería, carne y lácteos
+    ("Mercado Agroganadero", "mercadoagroganadero.com.ar", "agro"),
+    ("Valor Carne", "valorcarne.com.ar", "agro"),
+    ("Rosgan", "rosgan.com.ar", "agro"),
+    ("IPCVA", "ipcva.com.ar", "agro"),
+    ("Beef Central", "beefcentral.com", "agro"),
+    ("Drovers", "drovers.com", "agro"),
+    ("Beef Magazine", "beefmagazine.com", "agro"),
+    ("Cattle Network", "cattlenetwork.com", "agro"),
+    ("National Cattlemen's Beef Association", "ncba.org", "agro"),
+    ("Meat & Livestock Australia", "mla.com.au", "agro"),
+    ("Pig Progress", "pigprogress.net", "agro"),
+    ("The Pig Site", "thepigsite.com", "agro"),
+    ("WATTAgNet", "wattagnet.com", "agro"),
+    ("Global Meat News", "globalmeatnews.com", "agro"),
+    ("Meat+Poultry", "meatpoultry.com", "agro"),
+    ("Dairy Reporter", "dairyreporter.com", "agro"),
+    ("Hoard's Dairyman", "hoards.com", "agro"),
+    ("Global Dairy Trade", "globaldairytrade.info", "mercados"),
+    ("Scot Consultoria", "scotconsultoria.com.br", "agro"),
+    ("Portal DBO", "portaldbo.com.br", "agro"),
+    ("Notícias Agrícolas", "noticiasagricolas.com.br", "agro"),
     # Mercados de commodities y energía
     ("Argus Media", "argusmedia.com", "mercados"),
     ("ICIS", "icis.com", "mercados"),
@@ -207,8 +232,8 @@ FUENTES = [
     ("Port Technology International", "porttechnology.org", "logistica"),
 ]
 # Para los medios que publican de todo, la búsqueda por sitio se limita a estos temas (en inglés y español)
-KW_SITE = ('(grain OR wheat OR corn OR soybeans OR "crude oil" OR "natural gas" OR fertilizer OR "Black Sea" OR "bulk carrier"'
-           ' OR soja OR trigo OR maíz OR cebada OR granos OR petróleo OR "gas natural" OR fertilizantes OR retenciones OR exportaciones'
+KW_SITE = ('(grain OR wheat OR corn OR soybeans OR "crude oil" OR "natural gas" OR fertilizer OR "Black Sea" OR "bulk carrier" OR cattle OR beef OR hogs OR dairy'
+           ' OR soja OR trigo OR maíz OR cebada OR granos OR petróleo OR "gas natural" OR fertilizantes OR retenciones OR exportaciones OR hacienda OR novillo OR ganadería OR "carne vacuna" OR leche'
            ' OR war OR guerra OR Ukraine OR Ucrania OR Russia OR Rusia OR Iran OR Irán OR Israel OR Gaza OR Hormuz)')
 
 # Búsquedas dedicadas a los grandes conflictos bélicos (se buscan en español e inglés)
@@ -241,6 +266,73 @@ conflicto Medio Oriente petróleo
 estrecho de Ormuz
 ataque con misiles Ucrania
 ataque con drones Rusia
+""".strip().splitlines()
+
+# Búsquedas de ganadería: precios y producción (carne vacuna, cerdo, aves, lácteos)
+QUERIES_GAN = """
+precio de la hacienda en Liniers
+precio del novillo
+precio del ternero
+precio de la vaca conserva
+Mercado Agroganadero de Cañuelas
+faena bovina en Argentina
+producción de carne vacuna argentina
+exportaciones de carne vacuna argentina
+exportaciones de carne a China
+precio de la carne vacuna
+existencias bovinas argentinas
+invernada y engorde a corral
+relación maíz novillo
+cuota Hilton
+precio de la leche al productor
+producción de leche en Argentina
+exportaciones de lácteos argentinos
+precio internacional de la leche en polvo
+Global Dairy Trade licitación
+producción porcina argentina
+precio del cerdo
+producción avícola argentina
+precio del pollo
+exportaciones de carne aviar
+precio de los huevos
+sanidad animal y exportaciones de carne
+fiebre aftosa
+gripe aviar exportaciones
+exportaciones de carne de Brasil
+ganadería del sudoeste bonaerense
+""".strip().splitlines()
+
+QUERIES_GAN_EN = """
+global beef market outlook
+global cattle prices
+live cattle futures
+feeder cattle futures
+lean hog futures
+US cattle inventory
+US beef prices
+US beef exports
+Brazil beef exports
+Australia beef exports
+Argentina beef exports
+China beef imports
+China beef safeguard measures
+global pork prices
+China pork imports
+US hog prices
+global poultry market
+Brazil chicken exports
+avian influenza poultry exports
+US egg prices
+global dairy prices
+Global Dairy Trade auction
+milk powder prices
+New Zealand dairy exports
+global milk production
+foot-and-mouth disease outbreak
+African swine fever
+New World screwworm cattle
+USDA cattle on feed
+FAO meat price index
 """.strip().splitlines()
 
 QUERIES_ES = """
@@ -667,6 +759,10 @@ def _trabajos():
     for q in QUERIES_GUERRA:
         add(q, ED_ES)
         add(q, ED_EN)
+    for q in QUERIES_GAN:
+        add(q, ED_ES)
+    for q in QUERIES_GAN_EN:
+        add(q, ED_EN)
     for n, d, c in FUENTES:
         ed = ED_PT if (d.endswith(".br") or "globo.com" in d) else ED_DE if d == "agrarheute.com" else ED_EN
         add(f"site:{d}" if c == "agro" else f"site:{d} {KW_SITE}", ed)
@@ -691,7 +787,7 @@ def _pedir(trabajo):
 def buscar_noticias(dias):
     desde = datetime.now(timezone.utc) - timedelta(days=dias)
     trabajos = _trabajos()
-    print(f"{len(trabajos)} búsquedas en Google News (puede tardar un par de minutos)...")
+    print(f"{len(trabajos)} búsquedas en Google News (puede tardar unos minutos)...")
     with ThreadPoolExecutor(max_workers=8) as ex:
         resultados = list(ex.map(_pedir, trabajos))
     filas, fuera_de_lista = [], 0
@@ -774,11 +870,15 @@ def detectar_pais(texto):
 _rx = lambda p: re.compile(p, re.I)
 _ini, _fin = r"(?<!\w)(?:", r")(?!\w)"
 
+# "Hacienda" ganadera (evita confundirla con el Ministerio de Hacienda)
+_HAC = r"(?<!ministerio de )(?<!ministro de )(?<!ministra de )(?<!secretar[ií]a de )hacienda"
+
 RX_ACTIVOS = {
     "Granos": _rx(_ini + r"soja|soya|trigo|ma[ií]z|cebada|girasol|aceite de palma|granos?|soybeans?|wheat|corn|barley|grains?|sunflower|palm oil|oilseeds?" + _fin),
     "Petróleo": _rx(_ini + r"petr[oó]leo|crudo|brent|wti|crude|barril(?:es)?|barrels?" + _fin
                     + r"|(?<!sunflower )(?<!palm )(?<!soybean )(?<!vegetable )(?<!olive )(?<!\w)oil prices?(?!\w)"),
     "Gas natural": _rx(_ini + r"gas natural|natural gas|gnl|lng" + _fin),
+    "Ganadería": _rx(_ini + _HAC + r"|novill\w*|terner\w*|cattle|beef(?!\s+up)|hogs?|pork|cerdo|porcin\w*|poultry|pollo|milk|leche|dairy|carne vacuna" + _fin),
 }
 RX_SUBA = _rx(r"(?<!\w)(?:alz\w*|aument\w*|repunt\w*|sub[eií]\w*|suba|subas|rall?y|surge|surges|surging|soar\w*|jump\w*|rise|rises|rising|rose|climb\w*|gain\w*|higher|hike\w*)(?!\w)")
 RX_BAJA = _rx(r"(?<!\w)(?:baj[aóe]\w*|cae|caen|caer|ca[ií]d\w*|cay[oó]\w*|desplom\w*|retroced\w*|derrump\w*|falls?|fell|falling|drop\w*|plung\w*|slump\w*|declin\w*|lower|tumbl\w*|slid\w*|sink\w*|sank)(?!\w)")
@@ -820,6 +920,15 @@ PRODUCTOS = {
     "futuros": ("Futuros y commodities", r"cbot|matba|euronext|chicago board|(?:grain|wheat|corn|soybean|agricultural|crop|oilseed) futures"
                                           r"|futuros (?:de )?(?:granos|trigo|ma[ií]z|soja|agr[ií]colas)|agricultural commodit\w+|commodities agr\w+|crush margins?|m[aá]rgenes? de molienda"),
     "bio": ("Biocombustibles", r"biocombustibles?|biodi[eé]sel|bioetanol|etanol|ethanol|biofuels?"),
+    # --- Ganadería ---
+    "ganaderia": ("Ganadería (general)", r"ganader\w*|livestock|rodeos?|faena|slaughter\w*|meat (?:prices?|exports?|market)|(?:exportaciones|precios?|mercado) de (?:la )?carne"
+                                         r"|frigor[ií]fic\w*|abigeato|aftosa|foot-and-mouth|african swine fever|peste porcina|screwworm|gusano barrenador"),
+    "vacuno": ("Hacienda y carne vacuna", _HAC + r"|novill\w*|vacas?(?!\s+muerta)|vacunos?|terner\w*|invernada|feedlot|engorde a corral|cattle|beef(?!\s+up)|steers|cows?|calves"
+                                          r"|liniers|agroganadero|ca[ñn]uelas|bovin\w*|carne vacuna|cuota hilton"),
+    "porcino": ("Cerdo", r"cerdos?|porcin\w*|hogs?|pork|swine|pigs?(?!\s+iron)"),
+    "aviar": ("Aves y huevos", r"pollos?|av[ií]cola\w*|avicultur\w*|aviar\w*|poultry|chickens?|broilers?|huevos?|eggs?|gripe aviar|bird flu|avian influenza"),
+    "lacteos": ("Lácteos", r"leche|l[aá]cteos?|milk|dairy|queso|cheese|manteca|butter|milk powder|global dairy trade"),
+    # --- Resto de temas ---
     "cosecha": ("Cosecha y siembra", r"cosecha\w*|harvest\w*|siembra|planting|sowing|crop progress|crop conditions?|crop yields?|production forecasts?|estimaciones de producci[oó]n"),
     "clima": ("Clima", r"sequ[ií]as?|droughts?|el ni[nñ]o|la ni[nñ]a|inundaci\w*|floods?|heat ?waves?|ola de calor|lluvias?|rainfall|heladas?|frost|clima|weather|balance h[ií]drico"),
     "export": ("Exportaciones", r"exportaci\w*|exports?|exportad\w*|exporters?|export sales"),
@@ -834,7 +943,17 @@ PRODUCTOS = {
                                       r"|bombard\w*|airstrikes?|air strikes?|ofensiva|offensive|alto el fuego|ceasefire|hostilidades|hostilities"),
 }
 NUCLEO = {"trigo", "maiz", "soja", "cebada", "girasol", "sorgo", "arroz", "palma", "petroleo", "gas",
-          "fertil", "futuros", "bio", "cosecha"}
+          "fertil", "futuros", "bio", "cosecha", "ganaderia", "vacuno", "porcino", "aviar", "lacteos"}
+
+# Cómo se agrupan los filtros en la pantalla
+GRUPOS_FILTRO = [
+    ("Granos y oleaginosas", ["trigo", "maiz", "soja", "cebada", "girasol", "sorgo", "arroz", "palma"]),
+    ("Ganadería", ["ganaderia", "vacuno", "porcino", "aviar", "lacteos"]),
+    ("Energía e insumos", ["petroleo", "gas", "fertil", "bio"]),
+    ("Mercados y comercio", ["futuros", "export", "import", "aranceles", "acuerdos"]),
+    ("Campo y logística", ["cosecha", "clima", "fletes"]),
+    ("Geopolítica", ["guerra"]),
+]
 RX_PRODUCTOS = {k: _rx(_ini + v[1] + _fin) for k, v in PRODUCTOS.items()}
 
 
@@ -862,7 +981,7 @@ RX_EXCL_SUAVE = _rx(_ini + (
     r"choque|incendio\w*|femicidi\w*|estafa\w*|fraud\w*|condena\w*|sentenced|prisi[oó]n|jail|prison") + _fin)
 
 # Contexto agro general (para medios especializados)
-RX_AGRO = _rx(_ini + r"agr[ií]\w*|agro\w*|farm\w*|crops?|cultivos?|grains?|granos?|cereal\w*|oilseeds?|oleaginos\w*|livestock" + _fin)
+RX_AGRO = _rx(_ini + r"agr[ií]\w*|agro\w*|farm\w*|crops?|cultivos?|grains?|granos?|cereal\w*|oilseeds?|oleaginos\w*|livestock|ganader\w*|cattle|beef|dairy" + _fin)
 
 # Economía / mercados que aparecen en las queries (dólar, yuan, aranceles, tasas...)
 RX_MACRO = _rx(_ini + (
@@ -895,7 +1014,7 @@ def es_guerra_importante(texto):
 
 
 def es_relevante(texto, tipo):
-    """True solo si la noticia trata de agro, energía, logística, mercados/economía
+    """True solo si la noticia trata de agro, ganadería, energía, logística, mercados/economía
     vinculada a las queries, o de un gran conflicto bélico."""
     if RX_EXCL_DURO.search(texto):
         return False
@@ -946,7 +1065,7 @@ _n0 = len(noticias)
 _ok = pd.Series([relevante_previa(t, c) for t, c in zip(noticias["titulo"], noticias["cat"])],
                 index=noticias.index, dtype=bool)
 noticias = noticias[_ok].reset_index(drop=True)
-print(f"{_n0 - len(noticias)} noticias descartadas por no tratar de agro, energía o logística de granos")
+print(f"{_n0 - len(noticias)} noticias descartadas por no tratar de agro, ganadería, energía o logística")
 
 noticias["pais"] = [detectar_pais(t) for t in noticias["titulo"]]
 noticias["alertas"] = [clasificar(t) for t in noticias["titulo"]]
@@ -958,19 +1077,28 @@ for _p, _g in noticias[noticias["pais"].notna()].groupby("pais"):
 _idx |= set(noticias[noticias["alertas"].map(bool)].head(MAX_ALERTAS_GUARDAR + 30).index)
 cand = noticias.loc[sorted(_idx)].copy()
 
-# ---------- TRADUCCIÓN DE CUALQUIER IDIOMA A ESPAÑOL (DeepL + caché) ----------
+# ---------- TRADUCCIÓN DE CUALQUIER IDIOMA A ESPAÑOL (gratis, sin DeepL) ----------
 from langdetect import detect, DetectorFactory
 DetectorFactory.seed = 0
-import deepl
 
 errores_trad = []
-traduccion_bloqueada = False   # True si DeepL rechaza (cuota agotada, clave mala, etc.)
+traduccion_bloqueada = False   # True si el servicio no responde en todo un lote
 _MAP_IDIOMA = {"zh-cn": "zh-CN", "zh-tw": "zh-TW"}
 
-DEEPL_KEY = os.environ.get("DEEPL_API_KEY", "").strip()
-_traductor = deepl.Translator(DEEPL_KEY) if DEEPL_KEY else None
-if _traductor is None:
-    print("Aviso: no hay DEEPL_API_KEY; se muestran los títulos sin traducir.")
+# "google" = gratis y sin clave (deep-translator) | "deepl" = requiere DEEPL_API_KEY | "ninguno"
+TRADUCTOR = os.environ.get("TRADUCTOR", "google").strip().lower()
+GoogleTranslator = None
+_deepl_tr = None
+if TRADUCTOR == "google":
+    try:
+        from deep_translator import GoogleTranslator
+    except ImportError:
+        print("Aviso: falta 'pip install deep-translator'; se muestran los títulos sin traducir.")
+elif TRADUCTOR == "deepl":
+    import deepl
+    _k = os.environ.get("DEEPL_API_KEY", "").strip()
+    _deepl_tr = deepl.Translator(_k) if _k else None
+print(f"Motor de traducción: {TRADUCTOR}")
 
 # Caché: cada título se traduce una sola vez y se reutiliza en las corridas siguientes
 CACHE_TRAD = "cache_traducciones.json"
@@ -1004,9 +1132,22 @@ def idioma(titulo):
         return "auto"
 
 
+def _google_uno(t):
+    err = ""
+    for intento in range(3):
+        try:
+            r = GoogleTranslator(source="auto", target="es").translate(t)
+            if r:
+                return r
+        except Exception as e:
+            err = repr(e)[:200]
+        time.sleep(1.5 * (intento + 1))
+    errores_trad.append(err or "respuesta vacía")
+    return None
+
+
 def traducir_lote(textos, origen):
-    """Traduce una lista de títulos con DeepL (detecta el idioma solo).
-    Usa la caché; si DeepL falla o no hay clave, devuelve los originales."""
+    """Traduce títulos al español usando la caché; si el motor falla, devuelve los originales."""
     global traduccion_bloqueada
     salida, nuevos = {}, []
     for t in textos:
@@ -1014,26 +1155,33 @@ def traducir_lote(textos, origen):
             salida[t] = _cache[t]
         else:
             nuevos.append(t)
-    if nuevos and _traductor is not None and not traduccion_bloqueada:
-        try:
-            res = _traductor.translate_text(nuevos, target_lang="ES")
+    if nuevos and not traduccion_bloqueada:
+        if TRADUCTOR == "google" and GoogleTranslator is not None:
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                res = list(ex.map(_google_uno, nuevos))
+            fallos = 0
             for t, r in zip(nuevos, res):
-                salida[t] = r.text
-                _cache[t] = r.text
+                if r:
+                    salida[t] = r
+                    _cache[t] = r
+                else:
+                    fallos += 1
+            if fallos == len(nuevos) and len(nuevos) >= 5:
+                traduccion_bloqueada = True
+                print("Aviso: el traductor no respondió (¿bloqueo temporal?); se muestran los originales.")
             _guardar_cache()
-        except (deepl.QuotaExceededException, deepl.AuthorizationException,
-                deepl.TooManyRequestsException) as e:
-            traduccion_bloqueada = True
-            errores_trad.append(repr(e)[:200])
-            print(f"Aviso: DeepL rechazó el pedido ({type(e).__name__}); "
-                  "se muestran los títulos originales.")
-        except Exception as e:
-            errores_trad.append(repr(e)[:200])
+        elif TRADUCTOR == "deepl" and _deepl_tr is not None:
+            try:
+                res = _deepl_tr.translate_text(nuevos, target_lang="ES")
+                for t, r in zip(nuevos, res):
+                    salida[t] = r.text
+                    _cache[t] = r.text
+                _guardar_cache()
+            except Exception as e:
+                traduccion_bloqueada = True
+                errores_trad.append(repr(e)[:200])
+                print(f"Aviso: DeepL rechazó el pedido ({type(e).__name__}); se muestran los originales.")
     return [salida.get(t, t) for t in textos]
-
-
-def _traducir_uno(t, origen):
-    return traducir_lote([t], origen)[0]
 
 
 originales = list(dict.fromkeys(cand["titulo"]))
@@ -1183,7 +1331,7 @@ function mostrar(pais) {
 var MAXP = __MAXP__, MAXA = __MAXA__;
 var COL_AL = '__COL_AL__', COL_OK = '__COL_OK__';
 var PAISES = __PAISES__;
-var TAGS = __TAGS__;
+var GRUPOS = __TAGS__;
 var sel = {}, soloAl = false;
 function pasa(n) {
   if (soloAl && !(n.a && n.a.length)) return false;
@@ -1218,29 +1366,50 @@ function aplicarFiltro() {
   var nt = document.getElementById('n-total'); if (nt) nt.textContent = total;
 }
 function refrescarPanel() { var p = fijado || actual; actual = null; if (p) mostrar(p); }
+
+/* ---------- Filtros agrupados ---------- */
 var barra = document.getElementById('filtros');
 var cuenta = {};
 Object.keys(DATA).forEach(function (p) {
   DATA[p].forEach(function (n) { (n.p || []).forEach(function (t) { cuenta[t] = (cuenta[t] || 0) + 1; }); });
 });
-function chip(txt, cls, fn) {
+function chip(txt, cls, fn, padre) {
   var b = document.createElement('button');
   b.type = 'button'; b.className = 'chip ' + cls; b.textContent = txt;
-  b.addEventListener('click', fn); barra.appendChild(b); return b;
+  b.addEventListener('click', fn); padre.appendChild(b); return b;
 }
-var btnTodos = chip('Todos', '', function () { sel = {}; soloAl = false; cambiar(); });
+var fTop = document.createElement('div'); fTop.className = 'f-top'; barra.appendChild(fTop);
+var fCuerpo = document.createElement('div'); fCuerpo.className = 'f-grupos'; barra.appendChild(fCuerpo);
+var btnTodos = chip('Todos', '', function () { sel = {}; soloAl = false; cambiar(); }, fTop);
+var btnAl = chip('Solo alertas', 'al', function () { soloAl = !soloAl; cambiar(); }, fTop);
+var btnVer = chip('Filtros', 'ver', function () {
+  barra.classList.toggle('cerrado'); rotuloVer();
+  setTimeout(function () { Plotly.Plots.resize(gd); }, 50);
+}, fTop);
 var chips = {};
-TAGS.forEach(function (t) {
-  chips[t[0]] = chip(t[1] + (cuenta[t[0]] ? ' (' + cuenta[t[0]] + ')' : ''), cuenta[t[0]] ? '' : 'vacio', function () {
-    if (sel[t[0]]) { delete sel[t[0]]; } else { sel[t[0]] = true; }
-    cambiar();
+GRUPOS.forEach(function (g) {
+  var fila = document.createElement('div'); fila.className = 'f-grupo';
+  var nom = document.createElement('span'); nom.className = 'f-nombre'; nom.textContent = g[0];
+  var cont = document.createElement('div'); cont.className = 'f-chips';
+  g[1].forEach(function (t) {
+    var k = t[0];
+    chips[k] = chip(t[1] + (cuenta[k] ? ' (' + cuenta[k] + ')' : ''), cuenta[k] ? '' : 'vacio', function () {
+      if (sel[k]) { delete sel[k]; } else { sel[k] = true; }
+      cambiar();
+    }, cont);
   });
+  fila.appendChild(nom); fila.appendChild(cont); fCuerpo.appendChild(fila);
 });
-var btnAl = chip('Solo alertas', 'al', function () { soloAl = !soloAl; cambiar(); });
+if (window.innerWidth <= 800) barra.classList.add('cerrado');
+function rotuloVer() {
+  var n = Object.keys(sel).length;
+  btnVer.textContent = 'Filtros' + (n ? ' (' + n + ')' : '') + (barra.classList.contains('cerrado') ? ' ▾' : ' ▴');
+}
 function cambiar() {
   btnTodos.classList.toggle('on', !Object.keys(sel).length && !soloAl);
   Object.keys(chips).forEach(function (k) { chips[k].classList.toggle('on', !!sel[k]); });
   btnAl.classList.toggle('on', soloAl);
+  rotuloVer();
   aplicarFiltro(); renderAlertas(); refrescarPanel();
 }
 cambiar();
@@ -1292,7 +1461,7 @@ post_script = (POST_SCRIPT
                .replace("__DATA__", _js(conteo))
                .replace("__ALERTAS__", _js(alertas_lista))
                .replace("__PAISES__", _js(paises_ord))
-               .replace("__TAGS__", _js([[k, v[0]] for k, v in PRODUCTOS.items()]))
+               .replace("__TAGS__", _js([[g, [[k, PRODUCTOS[k][0]] for k in ks]] for g, ks in GRUPOS_FILTRO]))
                .replace("__MAXP__", str(MAX_POR_PAIS)).replace("__MAXA__", str(MAX_ALERTAS))
                .replace("__COL_AL__", COL["alerta"]).replace("__COL_OK__", COL["marcador"]))
 
@@ -1325,7 +1494,7 @@ css_fondo = (f"background-image:linear-gradient({VELO_FONDO},{VELO_FONDO}),url('
 ahora = datetime.now(ART).strftime("%d/%m/%Y %H:%M")
 cab_html = ('<div id="cab">'
             + (f'<img src="{logo_src}" alt="Bolsa de Cereales y Productos de Bahía Blanca"><div class="sep"></div>' if logo_src else "")
-            + '<div><h1>Noticias del mercado de granos</h1>'
+            + '<div><h1>Noticias de granos y ganadería</h1>'
             + f'<p><span id="n-total">{total_mostradas}</span> noticias &nbsp;·&nbsp; últimos {DIAS} días &nbsp;·&nbsp; actualizado {ahora}</p></div></div>')
 
 PAGINA = """<!DOCTYPE html>
@@ -1333,7 +1502,7 @@ PAGINA = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Noticias del mercado de granos</title>
+<title>Noticias de granos y ganadería</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=__GFONTS__&display=swap" rel="stylesheet">
@@ -1350,7 +1519,14 @@ PAGINA = """<!DOCTYPE html>
   #cab .sep { width:1px; align-self:stretch; background:var(--costa); }
   #cab h1 { margin:0; font-family:var(--fuente-t); font-size:30px; line-height:1.12; font-weight:900; color:var(--titulo); }
   #cab p { margin:6px 0 0; font-size:13px; color:var(--suave); }
-  #filtros { display:flex; flex-wrap:wrap; gap:6px; padding:10px 24px 0; }
+  #filtros { padding:8px 24px 0; }
+  .f-top { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
+  .f-top .chip.ver { margin-left:auto; }
+  .f-grupos { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:6px 28px; }
+  #filtros.cerrado .f-grupos { display:none; }
+  .f-grupo { display:flex; align-items:flex-start; gap:10px; min-width:0; }
+  .f-nombre { flex:0 0 96px; padding-top:5px; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--suave); }
+  .f-chips { display:flex; flex-wrap:wrap; gap:5px; min-width:0; }
   .chip { font:inherit; font-size:13px; cursor:pointer; padding:4px 10px; border-radius:3px; border:1px solid #cfd8c4; background:#fff; color:var(--texto); }
   .chip:hover { border-color:var(--titulo); color:var(--titulo); }
   .chip.on { background:var(--titulo); border-color:var(--titulo); color:#fff; }
@@ -1381,7 +1557,9 @@ PAGINA = """<!DOCTYPE html>
     #cab img { height:34px; }
     #cab h1 { font-size:16px; }
     #cab p { font-size:10px; margin-top:3px; }
-    #filtros { flex-wrap:nowrap; overflow-x:auto; padding:6px 12px 0; }
+    #filtros { padding:6px 12px 0; }
+    .f-grupos { grid-template-columns:1fr; max-height:26vh; overflow-y:auto; }
+    .f-nombre { flex-basis:90px; }
     .chip { white-space:nowrap; flex:0 0 auto; font-size:12px; padding:3px 9px; }
     #panel { flex:1 1 0; width:auto; max-width:none; min-height:0; border-left:0; border-top:1px solid var(--borde); }
     #panel h2 { font-size:16px; padding:10px 12px 2px; }
