@@ -29,21 +29,20 @@ jobs:
           python-version: "3.12"
 
       - name: Instalar dependencias
-        run: pip install feedparser plotly pandas deepl langdetect
-
-      - name: Instalar dependencias
         run: pip install feedparser plotly pandas langdetect deep-translator googlenewsdecoder
 
-      - name: Restaurar caché de traducciones
+      - name: Restaurar caché de traducciones y resúmenes
         uses: actions/cache@v4
         with:
-          path: cache_traducciones.json
-          key: traducciones-${{ github.run_id }}
-          restore-keys: traducciones-
+          path: |
+            cache_traducciones.json
+            cache_resumenes_v2.json
+          key: cache-${{ github.run_id }}
+          restore-keys: |
+            cache-
+            traducciones-
 
       - name: Generar el mapa
-        env:
-          DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
         run: python mapa_noticias_granos.py
 
       - name: Preparar carpeta del sitio
